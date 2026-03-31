@@ -130,7 +130,7 @@ def init_db():
     # Seed users
     users = [
         ("venera", pwd_context.hash("venera123"), "Venera (CEO)", "ceo"),
-        ("alexey", pwd_context.hash("alexey123"), "Alexey (CTO)", "cto"),
+        ("dmitry", pwd_context.hash("dmitry123"), "Dmitry (Founder)", "cto"),
     ]
     for username, pw_hash, display, role in users:
         try:

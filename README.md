@@ -19,7 +19,7 @@ python3 run.py
 | Логин   | Пароль     | Роль        |
 |---------|------------|-------------|
 | venera  | venera123  | CEO         |
-| alexey  | alexey123  | Founder/CTO |
+| dmitry  | dmitry123  | Founder     |
 
 ## Возможности
 

@@ -31,7 +31,7 @@ python3 run.py
 - Карточка кандидата с хронологической лентой активности
 - Заметки с Markdown
 - Тестовые задания с оценкой
-- Встречи с записью ссылок на видео
+- Встречи с записью ссылок на видео + email-приглашения с .ics файлом
 - Загрузка файлов (резюме, документы)
 - Оценка кандидатов (1-5 звёзд)
 - Тёмная / светлая тема
@@ -56,6 +56,30 @@ python3 run.py
    - `ATS_UPLOAD_DIR` = `/data/uploads`
 4. Добавить **Disk**: Mount Path `/data`, 1 GB
 5. Create Web Service
+
+## Настройка email-приглашений
+
+При создании/обновлении/отмене встречи ATS отправляет email с .ics файлом всем участникам
+(пользователи + кандидат). Встреча автоматически появляется в Google Calendar / Outlook / Apple Calendar.
+
+### Gmail App Password (рекомендуется)
+
+1. Включите 2FA в Google аккаунте: https://myaccount.google.com/security
+2. Создайте App Password: https://myaccount.google.com/apppasswords
+   - Приложение: **Mail**, устройство: **Other** → назовите "ATS Tracker"
+   - Скопируйте 16-символьный пароль
+3. Задайте переменные окружения:
+
+```bash
+export SMTP_HOST=smtp.gmail.com
+export SMTP_PORT=587
+export SMTP_USER=your-email@gmail.com
+export SMTP_PASSWORD=xxxx-xxxx-xxxx-xxxx   # App Password, НЕ обычный пароль
+```
+
+На Render: добавьте эти переменные в Environment Variables сервиса.
+
+Если SMTP не настроен — приложение работает без email, просто не отправляет приглашения.
 
 ## Стек
 

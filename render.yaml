@@ -22,6 +22,14 @@ services:
         value: /data/uploads
       - key: ATS_RELOAD
         value: "false"
+      - key: SMTP_HOST
+        value: "smtp.gmail.com"
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
     disk:
       name: ats-uploads
       mountPath: /data

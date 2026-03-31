@@ -380,7 +380,7 @@ async function openCandidateDetail(id) {
                 ${meetings.map(m => `
                     <div class="item-card">
                         <div class="item-header">
-                            <span class="item-title">${formatDate(m.meeting_date)} · ${esc(m.format)}</span>
+                            <span class="item-title">${formatDate(m.meeting_date)}${m.meeting_time ? ' ' + esc(m.meeting_time) : ''} · ${esc(m.format)}</span>
                             <button class="btn btn-ghost btn-sm" onclick="deleteMeeting(${id},${m.id})">✕</button>
                         </div>
                         <div class="item-body">
@@ -394,6 +394,7 @@ async function openCandidateDetail(id) {
                     <summary>Добавить встречу</summary>
                     <div class="add-form">
                         <label>Дата</label><input type="date" id="new-meeting-date">
+                        <label>Время</label><input type="time" id="new-meeting-time" value="10:00">
                         <label>Формат</label>
                         <select id="new-meeting-format" class="select">
                             <option value="zoom">Zoom</option>
@@ -520,6 +521,7 @@ window.deleteTask = async function(cid, tid) {
 window.addMeeting = async function(cid) {
     const data = {
         meeting_date: document.getElementById('new-meeting-date').value,
+        meeting_time: document.getElementById('new-meeting-time').value,
         format: document.getElementById('new-meeting-format').value,
         recording_url: document.getElementById('new-meeting-url').value,
         summary: document.getElementById('new-meeting-summary').value,

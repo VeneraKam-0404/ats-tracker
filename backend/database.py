@@ -37,8 +37,16 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             display_name TEXT NOT NULL,
-            role TEXT NOT NULL
+            role TEXT NOT NULL,
+            email TEXT DEFAULT ''
         )
+    """)
+    # Migration: add email column if missing
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE users ADD COLUMN email TEXT DEFAULT '';
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$
     """)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS candidates (
@@ -83,12 +91,27 @@ def init_db():
             id SERIAL PRIMARY KEY,
             candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
             meeting_date TEXT NOT NULL,
+            meeting_time TEXT DEFAULT '',
             format TEXT NOT NULL DEFAULT 'zoom',
             recording_url TEXT DEFAULT '',
             summary TEXT DEFAULT '',
             created_by INTEGER NOT NULL REFERENCES users(id),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ics_sequence INTEGER DEFAULT 0
         )
+    """)
+    # Migration: add new columns if missing
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE meetings ADD COLUMN meeting_time TEXT DEFAULT '';
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$
+    """)
+    cur.execute("""
+        DO $$ BEGIN
+            ALTER TABLE meetings ADD COLUMN ics_sequence INTEGER DEFAULT 0;
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$
     """)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS files (
@@ -126,15 +149,16 @@ def init_db():
 
     # Seed users
     users = [
-        ("venera", pwd_context.hash("venera123"), "Venera (CEO)", "ceo"),
-        ("dmitry", pwd_context.hash("dmitry123"), "Dmitry (Founder)", "cto"),
+        ("venera", pwd_context.hash("venera123"), "Venera (CEO)", "ceo", "veneramiray@gmail.com"),
+        ("dmitry", pwd_context.hash("dmitry123"), "Dmitry (Founder)", "cto", ""),
     ]
-    for username, pw_hash, display, role in users:
+    for username, pw_hash, display, role, email in users:
         cur.execute(
-            """INSERT INTO users (username, password_hash, display_name, role)
-               VALUES (%s, %s, %s, %s)
-               ON CONFLICT (username) DO NOTHING""",
-            (username, pw_hash, display, role),
+            """INSERT INTO users (username, password_hash, display_name, role, email)
+               VALUES (%s, %s, %s, %s, %s)
+               ON CONFLICT (username) DO UPDATE SET email = EXCLUDED.email
+               WHERE users.email = '' OR users.email IS NULL""",
+            (username, pw_hash, display, role, email),
         )
     conn.commit()
     conn.close()

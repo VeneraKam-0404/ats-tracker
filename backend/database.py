@@ -94,25 +94,27 @@ def init_db():
             meeting_time TEXT DEFAULT '',
             format TEXT NOT NULL DEFAULT 'zoom',
             recording_url TEXT DEFAULT '',
+            zoom_url TEXT DEFAULT '',
             summary TEXT DEFAULT '',
+            attendees TEXT DEFAULT 'all',
             created_by INTEGER NOT NULL REFERENCES users(id),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             ics_sequence INTEGER DEFAULT 0
         )
     """)
     # Migration: add new columns if missing
-    cur.execute("""
-        DO $$ BEGIN
-            ALTER TABLE meetings ADD COLUMN meeting_time TEXT DEFAULT '';
-        EXCEPTION WHEN duplicate_column THEN NULL;
-        END $$
-    """)
-    cur.execute("""
-        DO $$ BEGIN
-            ALTER TABLE meetings ADD COLUMN ics_sequence INTEGER DEFAULT 0;
-        EXCEPTION WHEN duplicate_column THEN NULL;
-        END $$
-    """)
+    for col, default in [
+        ("meeting_time", "''"),
+        ("ics_sequence", "0"),
+        ("zoom_url", "''"),
+        ("attendees", "'all'"),
+    ]:
+        cur.execute(f"""
+            DO $$ BEGIN
+                ALTER TABLE meetings ADD COLUMN {col} TEXT DEFAULT {default};
+            EXCEPTION WHEN duplicate_column THEN NULL;
+            END $$
+        """)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS files (
             id SERIAL PRIMARY KEY,

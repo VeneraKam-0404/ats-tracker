@@ -3,6 +3,7 @@ let token = localStorage.getItem('ats_token');
 let currentUser = JSON.parse(localStorage.getItem('ats_user') || 'null');
 let candidates = [];
 let currentCandidateId = null;
+let calendarWeekStart = getMonday(new Date());
 
 const STATUSES = ['Новый', 'Резюме рассмотрено', 'Тестовое задание', 'Интервью', 'Оффер', 'Принят', 'Отказ'];
 const STATUS_CLASSES = {
@@ -10,6 +11,7 @@ const STATUS_CLASSES = {
     'Тестовое задание': 'status-test', 'Интервью': 'status-interview',
     'Оффер': 'status-offer', 'Принят': 'status-hired', 'Отказ': 'status-rejected'
 };
+const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
 // === API ===
 async function api(path, opts = {}) {
@@ -84,6 +86,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.classList.add('active');
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
         document.getElementById(`${btn.dataset.view}-view`).classList.add('active');
+        if (btn.dataset.view === 'calendar') renderCalendar();
     });
 });
 
@@ -94,7 +97,36 @@ async function loadCandidates() {
         renderKanban();
         renderTable();
         updatePositionFilter();
+        loadTodayMeetings();
     } catch (err) { console.error(err); }
+}
+
+// === Today Meetings Widget ===
+async function loadTodayMeetings() {
+    const widget = document.getElementById('today-meetings-widget');
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const meetings = await api(`/api/meetings?date_from=${today}&date_to=${today}`);
+        if (meetings.length === 0) {
+            widget.innerHTML = '';
+            return;
+        }
+        widget.innerHTML = `
+            <div class="today-widget">
+                <div class="today-widget-title">Встречи сегодня (${meetings.length})</div>
+                ${meetings.map(m => `
+                    <div class="today-widget-item" onclick="openCandidateDetail(${m.candidate_id})">
+                        <span class="tw-time">${esc(m.meeting_time || '—')}</span>
+                        <span class="tw-name">${esc(m.candidate_name)}</span>
+                        <span class="tw-pos">${esc(m.candidate_position || '')}</span>
+                        <span class="tw-format">${esc(m.format)}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } catch (err) {
+        widget.innerHTML = '';
+    }
 }
 
 // === Kanban ===
@@ -114,7 +146,6 @@ function renderKanban() {
         `;
         const cards = col.querySelector('.kanban-cards');
 
-        // Drag & drop
         cards.addEventListener('dragover', e => { e.preventDefault(); cards.classList.add('drag-over'); });
         cards.addEventListener('dragleave', () => cards.classList.remove('drag-over'));
         cards.addEventListener('drop', async (e) => {
@@ -153,6 +184,79 @@ function renderKanban() {
         board.appendChild(col);
     });
 }
+
+// === Calendar ===
+function getMonday(d) {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    date.setDate(diff);
+    date.setHours(0, 0, 0, 0);
+    return date;
+}
+
+function formatISODate(d) {
+    return d.toISOString().split('T')[0];
+}
+
+async function renderCalendar() {
+    const grid = document.getElementById('calendar-grid');
+    const label = document.getElementById('cal-week-label');
+
+    const weekEnd = new Date(calendarWeekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
+    const monthNames = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+                        'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+    label.textContent = `${calendarWeekStart.getDate()} ${monthNames[calendarWeekStart.getMonth()]} — ${weekEnd.getDate()} ${monthNames[weekEnd.getMonth()]} ${weekEnd.getFullYear()}`;
+
+    const dateFrom = formatISODate(calendarWeekStart);
+    const dateTo = formatISODate(weekEnd);
+
+    let meetings = [];
+    try {
+        meetings = await api(`/api/meetings?date_from=${dateFrom}&date_to=${dateTo}`);
+    } catch (err) { console.error(err); }
+
+    const today = formatISODate(new Date());
+
+    grid.innerHTML = '';
+    for (let i = 0; i < 7; i++) {
+        const date = new Date(calendarWeekStart);
+        date.setDate(date.getDate() + i);
+        const dateStr = formatISODate(date);
+        const dayMeetings = meetings.filter(m => m.meeting_date === dateStr);
+        const isToday = dateStr === today;
+
+        const col = document.createElement('div');
+        col.className = `cal-day${isToday ? ' cal-today' : ''}`;
+        col.innerHTML = `
+            <div class="cal-day-header">
+                <span class="cal-weekday">${WEEKDAYS[i]}</span>
+                <span class="cal-day-num">${date.getDate()}</span>
+            </div>
+            ${dayMeetings.map(m => `
+                <div class="cal-event" onclick="openCandidateDetail(${m.candidate_id})" title="${esc(m.candidate_name)} — ${esc(m.meeting_time || '')} ${esc(m.format)}">
+                    ${esc(m.meeting_time || '—')} ${esc(m.candidate_name)}
+                </div>
+            `).join('')}
+        `;
+        grid.appendChild(col);
+    }
+}
+
+document.getElementById('cal-prev').addEventListener('click', () => {
+    calendarWeekStart.setDate(calendarWeekStart.getDate() - 7);
+    renderCalendar();
+});
+document.getElementById('cal-next').addEventListener('click', () => {
+    calendarWeekStart.setDate(calendarWeekStart.getDate() + 7);
+    renderCalendar();
+});
+document.getElementById('cal-today').addEventListener('click', () => {
+    calendarWeekStart = getMonday(new Date());
+    renderCalendar();
+});
 
 // === Table ===
 function renderTable() {
@@ -197,7 +301,6 @@ function updatePositionFilter() {
     sel.value = current;
 }
 
-// Table sorting
 document.querySelectorAll('th[data-sort]').forEach(th => {
     th.addEventListener('click', () => {
         const col = th.dataset.sort;
@@ -381,29 +484,50 @@ async function openCandidateDetail(id) {
                     <div class="item-card">
                         <div class="item-header">
                             <span class="item-title">${formatDate(m.meeting_date)}${m.meeting_time ? ' ' + esc(m.meeting_time) : ''} · ${esc(m.format)}</span>
-                            <button class="btn btn-ghost btn-sm" onclick="deleteMeeting(${id},${m.id})">✕</button>
+                            <div style="display:flex;gap:0.25rem">
+                                <button class="btn btn-ghost btn-sm" onclick="editMeeting(${id},${m.id})">&#9998;</button>
+                                <button class="btn btn-ghost btn-sm" onclick="deleteMeeting(${id},${m.id})">✕</button>
+                            </div>
                         </div>
                         <div class="item-body">
+                            ${m.attendees && m.attendees !== 'all' ? `<p style="font-size:0.8rem;color:var(--text-secondary)">Участники: ${esc(m.attendees)}</p>` : ''}
+                            ${m.zoom_url ? `<p><a href="${esc(m.zoom_url)}" target="_blank">Zoom</a></p>` : ''}
                             ${m.recording_url ? `<p><a href="${esc(m.recording_url)}" target="_blank">Запись</a></p>` : ''}
                             ${m.summary ? `<p>${esc(m.summary)}</p>` : ''}
                         </div>
                         <div class="item-meta">Создал: ${esc(m.creator_name)}</div>
                     </div>
                 `).join('') || '<p style="color:var(--text-secondary);font-size:0.85rem">Нет встреч</p>'}
-                <details class="add-section">
+                <details class="add-section" id="meeting-form-section">
                     <summary>Добавить встречу</summary>
                     <div class="add-form">
-                        <label>Дата</label><input type="date" id="new-meeting-date">
-                        <label>Время</label><input type="time" id="new-meeting-time" value="10:00">
+                        <input type="hidden" id="edit-meeting-id">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+                            <div><label>Дата *</label><input type="date" id="new-meeting-date"></div>
+                            <div><label>Время</label><input type="time" id="new-meeting-time" value="10:00"></div>
+                        </div>
                         <label>Формат</label>
                         <select id="new-meeting-format" class="select">
                             <option value="zoom">Zoom</option>
                             <option value="очно">Очно</option>
                             <option value="телефон">Телефон</option>
                         </select>
-                        <label>Ссылка на запись</label><input type="url" id="new-meeting-url" placeholder="https://...">
-                        <label>Резюме встречи</label><textarea id="new-meeting-summary" rows="2"></textarea>
-                        <button class="btn btn-primary btn-sm" style="margin-top:0.5rem" onclick="addMeeting(${id})">Добавить</button>
+                        <label>Участники</label>
+                        <select id="new-meeting-attendees" class="select">
+                            <option value="all">Все (Venera + Dmitry)</option>
+                            <option value="venera">Только Venera</option>
+                            <option value="dmitry">Только Dmitry</option>
+                        </select>
+                        <label>Ссылка на Zoom</label>
+                        <input type="url" id="new-meeting-zoom" placeholder="https://zoom.us/j/...">
+                        <label>Ссылка на запись (после встречи)</label>
+                        <input type="url" id="new-meeting-recording" placeholder="https://...">
+                        <label>Итоги / резюме встречи</label>
+                        <textarea id="new-meeting-summary" rows="2" placeholder="Краткие итоги..."></textarea>
+                        <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+                            <button class="btn btn-primary btn-sm" onclick="saveMeeting(${id})">Сохранить</button>
+                            <button class="btn btn-ghost btn-sm" onclick="cancelEditMeeting()">Отмена</button>
+                        </div>
                     </div>
                 </details>
             </div>
@@ -518,20 +642,55 @@ window.deleteTask = async function(cid, tid) {
 };
 
 // === Meetings ===
-window.addMeeting = async function(cid) {
+window.saveMeeting = async function(cid) {
+    const editId = document.getElementById('edit-meeting-id').value;
     const data = {
         meeting_date: document.getElementById('new-meeting-date').value,
         meeting_time: document.getElementById('new-meeting-time').value,
         format: document.getElementById('new-meeting-format').value,
-        recording_url: document.getElementById('new-meeting-url').value,
+        attendees: document.getElementById('new-meeting-attendees').value,
+        zoom_url: document.getElementById('new-meeting-zoom').value,
+        recording_url: document.getElementById('new-meeting-recording').value,
         summary: document.getElementById('new-meeting-summary').value,
     };
     if (!data.meeting_date) { alert('Укажите дату'); return; }
-    await api(`/api/candidates/${cid}/meetings`, { method: 'POST', body: data });
+    if (editId) {
+        await api(`/api/candidates/${cid}/meetings/${editId}`, { method: 'PUT', body: data });
+    } else {
+        await api(`/api/candidates/${cid}/meetings`, { method: 'POST', body: data });
+    }
     openCandidateDetail(cid);
 };
 
+window.editMeeting = async function(cid, mid) {
+    const meetings = await api(`/api/candidates/${cid}/meetings`);
+    const m = meetings.find(x => x.id === mid);
+    if (!m) return;
+    document.getElementById('edit-meeting-id').value = m.id;
+    document.getElementById('new-meeting-date').value = m.meeting_date || '';
+    document.getElementById('new-meeting-time').value = m.meeting_time || '';
+    document.getElementById('new-meeting-format').value = m.format || 'zoom';
+    document.getElementById('new-meeting-attendees').value = m.attendees || 'all';
+    document.getElementById('new-meeting-zoom').value = m.zoom_url || '';
+    document.getElementById('new-meeting-recording').value = m.recording_url || '';
+    document.getElementById('new-meeting-summary').value = m.summary || '';
+    const section = document.getElementById('meeting-form-section');
+    if (section) section.open = true;
+};
+
+window.cancelEditMeeting = function() {
+    document.getElementById('edit-meeting-id').value = '';
+    document.getElementById('new-meeting-date').value = '';
+    document.getElementById('new-meeting-time').value = '10:00';
+    document.getElementById('new-meeting-format').value = 'zoom';
+    document.getElementById('new-meeting-attendees').value = 'all';
+    document.getElementById('new-meeting-zoom').value = '';
+    document.getElementById('new-meeting-recording').value = '';
+    document.getElementById('new-meeting-summary').value = '';
+};
+
 window.deleteMeeting = async function(cid, mid) {
+    if (!confirm('Отменить встречу? Участники получат уведомление.')) return;
     await api(`/api/candidates/${cid}/meetings/${mid}`, { method: 'DELETE' });
     openCandidateDetail(cid);
 };

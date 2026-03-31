@@ -32,6 +32,7 @@
                     <nav>
                         <button class="nav-btn active" data-view="kanban">Канбан</button>
                         <button class="nav-btn" data-view="table">Таблица</button>
+                        <button class="nav-btn" data-view="calendar">Календарь</button>
                     </nav>
                 </div>
                 <div class="header-right">
@@ -45,7 +46,19 @@
             <main>
                 <!-- Kanban View -->
                 <div id="kanban-view" class="view active">
+                    <div id="today-meetings-widget"></div>
                     <div class="kanban-board" id="kanban-board"></div>
+                </div>
+
+                <!-- Calendar View -->
+                <div id="calendar-view" class="view">
+                    <div class="calendar-header">
+                        <button class="btn btn-ghost btn-sm" id="cal-prev">&larr;</button>
+                        <h2 id="cal-week-label"></h2>
+                        <button class="btn btn-ghost btn-sm" id="cal-today">Сегодня</button>
+                        <button class="btn btn-ghost btn-sm" id="cal-next">&rarr;</button>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid"></div>
                 </div>
 
                 <!-- Table View -->

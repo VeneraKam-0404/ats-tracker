@@ -5,7 +5,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 
-from backend.database import init_db, UPLOAD_PATH, DATABASE_URL
+from fastapi import Depends
+from backend.database import init_db, get_db, UPLOAD_PATH, DATABASE_URL
+from backend.auth import get_current_user
 from backend.routes import auth, candidates, notes, meetings, tasks, files, ratings
 
 logging.basicConfig(level=logging.INFO)
@@ -59,6 +61,31 @@ def health():
         "upload_path": str(UPLOAD_PATH),
         "upload_dir_writable": os.access(UPLOAD_PATH, os.W_OK),
     }
+
+
+@app.get("/api/meetings")
+def all_meetings(date_from: str = "", date_to: str = "", user: dict = Depends(get_current_user)):
+    """Get all meetings across all candidates, optionally filtered by date range."""
+    conn = get_db()
+    cur = conn.cursor()
+    query = """SELECT m.*, c.full_name as candidate_name, c.position as candidate_position,
+                      u.display_name as creator_name
+               FROM meetings m
+               JOIN candidates c ON m.candidate_id = c.id
+               JOIN users u ON m.created_by = u.id
+               WHERE 1=1"""
+    params = []
+    if date_from:
+        query += " AND m.meeting_date >= %s"
+        params.append(date_from)
+    if date_to:
+        query += " AND m.meeting_date <= %s"
+        params.append(date_to)
+    query += " ORDER BY m.meeting_date ASC, m.meeting_time ASC"
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    conn.close()
+    return [{**dict(r), "created_at": str(r["created_at"])} for r in rows]
 
 
 @app.on_event("startup")

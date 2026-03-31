@@ -15,16 +15,20 @@ class MeetingCreate(BaseModel):
     meeting_date: str
     meeting_time: str = ""
     format: str = "zoom"
+    zoom_url: str = ""
     recording_url: str = ""
     summary: str = ""
+    attendees: str = "all"
 
 
 class MeetingUpdate(BaseModel):
     meeting_date: Optional[str] = None
     meeting_time: Optional[str] = None
     format: Optional[str] = None
+    zoom_url: Optional[str] = None
     recording_url: Optional[str] = None
     summary: Optional[str] = None
+    attendees: Optional[str] = None
 
 
 def _get_candidate(cur, candidate_id):
@@ -49,7 +53,7 @@ def _send_invite(cur, meeting, candidate, method="REQUEST", cancel=False):
             meeting_date=meeting["meeting_date"],
             meeting_time=meeting.get("meeting_time", ""),
             meeting_format=meeting["format"],
-            zoom_url=meeting.get("recording_url", ""),
+            zoom_url=meeting.get("zoom_url", "") or meeting.get("recording_url", ""),
             user_emails=user_emails,
             method=method,
             cancel=cancel,
@@ -85,9 +89,9 @@ def create_meeting(candidate_id: int, m: MeetingCreate, user: dict = Depends(get
         raise HTTPException(404, "Кандидат не найден")
 
     cur.execute(
-        """INSERT INTO meetings (candidate_id, meeting_date, meeting_time, format, recording_url, summary, created_by)
-           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-        (candidate_id, m.meeting_date, m.meeting_time, m.format, m.recording_url, m.summary, user["id"]),
+        """INSERT INTO meetings (candidate_id, meeting_date, meeting_time, format, zoom_url, recording_url, summary, attendees, created_by)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+        (candidate_id, m.meeting_date, m.meeting_time, m.format, m.zoom_url, m.recording_url, m.summary, m.attendees, user["id"]),
     )
     mid = cur.fetchone()["id"]
     cur.execute(

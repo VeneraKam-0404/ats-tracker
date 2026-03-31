@@ -1,3 +1,10 @@
+databases:
+  - name: ats-db
+    plan: free
+    region: frankfurt
+    databaseName: ats
+    user: ats
+
 services:
   - type: web
     name: ats-tracker
@@ -5,15 +12,17 @@ services:
     plan: starter
     region: frankfurt
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ats-db
+          property: connectionString
       - key: ATS_SECRET_KEY
         generateValue: true
-      - key: ATS_DATA_DIR
-        value: /data/db
       - key: ATS_UPLOAD_DIR
         value: /data/uploads
       - key: ATS_RELOAD
         value: "false"
     disk:
-      name: ats-data
+      name: ats-uploads
       mountPath: /data
       sizeGB: 1

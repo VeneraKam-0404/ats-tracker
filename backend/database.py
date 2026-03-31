@@ -1,46 +1,48 @@
-import sqlite3
 import os
 import logging
 from pathlib import Path
+import psycopg2
+import psycopg2.extras
 from passlib.context import CryptContext
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ats")
 
-DATA_DIR = Path(os.environ.get("ATS_DATA_DIR", Path(__file__).parent.parent / "data"))
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 UPLOAD_PATH = Path(os.environ.get("ATS_UPLOAD_DIR", Path(__file__).parent.parent / "uploads"))
-DB_PATH = DATA_DIR / "ats.db"
-
-logger.info(f"DATA_DIR={DATA_DIR}, DB_PATH={DB_PATH}, UPLOAD_PATH={UPLOAD_PATH}")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+logger.info(f"DATABASE_URL={'set' if DATABASE_URL else 'NOT SET'}, UPLOAD_PATH={UPLOAD_PATH}")
+
 
 def get_db():
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not set")
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    conn.autocommit = False
     return conn
 
 
 def init_db():
-    os.makedirs(DB_PATH.parent, exist_ok=True)
     os.makedirs(UPLOAD_PATH, exist_ok=True)
-    logger.info(f"DB dir exists: {DB_PATH.parent.exists()}, writable: {os.access(DB_PATH.parent, os.W_OK)}")
     logger.info(f"Upload dir exists: {UPLOAD_PATH.exists()}, writable: {os.access(UPLOAD_PATH, os.W_OK)}")
+
     conn = get_db()
-    conn.executescript("""
+    cur = conn.cursor()
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             display_name TEXT NOT NULL,
             role TEXT NOT NULL
-        );
-
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS candidates (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             full_name TEXT NOT NULL,
             position TEXT NOT NULL DEFAULT '',
             email TEXT DEFAULT '',
@@ -51,21 +53,21 @@ def init_db():
             source TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS notes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            candidate_id INTEGER NOT NULL,
-            author_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+            author_id INTEGER NOT NULL REFERENCES users(id),
             content TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
-            FOREIGN KEY (author_id) REFERENCES users(id)
-        );
-
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS test_assignments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            candidate_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
             description TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'Выдано',
             rating INTEGER,
@@ -73,59 +75,54 @@ def init_db():
             assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             received_at TIMESTAMP,
             reviewed_at TIMESTAMP,
-            created_by INTEGER NOT NULL,
-            FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
-            FOREIGN KEY (created_by) REFERENCES users(id)
-        );
-
+            created_by INTEGER NOT NULL REFERENCES users(id)
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS meetings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            candidate_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
             meeting_date TEXT NOT NULL,
             format TEXT NOT NULL DEFAULT 'zoom',
             recording_url TEXT DEFAULT '',
             summary TEXT DEFAULT '',
-            created_by INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
-            FOREIGN KEY (created_by) REFERENCES users(id)
-        );
-
+            created_by INTEGER NOT NULL REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS files (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            candidate_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
             filename TEXT NOT NULL,
             original_filename TEXT NOT NULL,
             file_type TEXT DEFAULT 'other',
-            uploaded_by INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
-            FOREIGN KEY (uploaded_by) REFERENCES users(id)
-        );
-
+            uploaded_by INTEGER NOT NULL REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS ratings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            candidate_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
             score INTEGER NOT NULL CHECK(score >= 1 AND score <= 5),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(candidate_id, user_id),
-            FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        );
-
+            UNIQUE(candidate_id, user_id)
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS activity_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            candidate_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
             action TEXT NOT NULL,
             details TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE CASCADE,
-            FOREIGN KEY (user_id) REFERENCES users(id)
-        );
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
     """)
+    conn.commit()
 
     # Seed users
     users = [
@@ -133,13 +130,12 @@ def init_db():
         ("dmitry", pwd_context.hash("dmitry123"), "Dmitry (Founder)", "cto"),
     ]
     for username, pw_hash, display, role in users:
-        try:
-            conn.execute(
-                "INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
-                (username, pw_hash, display, role),
-            )
-        except sqlite3.IntegrityError:
-            pass
-
+        cur.execute(
+            """INSERT INTO users (username, password_hash, display_name, role)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (username) DO NOTHING""",
+            (username, pw_hash, display, role),
+        )
     conn.commit()
     conn.close()
+    logger.info("Database initialized successfully")

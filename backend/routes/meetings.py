@@ -23,64 +23,72 @@ class MeetingUpdate(BaseModel):
 
 @router.get("")
 def list_meetings(candidate_id: int, user: dict = Depends(get_current_user)):
-    db = get_db()
-    rows = db.execute(
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
         """SELECT m.*, u.display_name as creator_name
            FROM meetings m JOIN users u ON m.created_by = u.id
-           WHERE m.candidate_id = ?
+           WHERE m.candidate_id = %s
            ORDER BY m.meeting_date DESC""",
         (candidate_id,),
-    ).fetchall()
-    db.close()
-    return [dict(r) for r in rows]
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return [{**dict(r), "created_at": str(r["created_at"])} for r in rows]
 
 
 @router.post("")
 def create_meeting(candidate_id: int, m: MeetingCreate, user: dict = Depends(get_current_user)):
-    db = get_db()
-    cur = db.execute(
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
         """INSERT INTO meetings (candidate_id, meeting_date, format, recording_url, summary, created_by)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
         (candidate_id, m.meeting_date, m.format, m.recording_url, m.summary, user["id"]),
     )
-    db.execute(
-        "INSERT INTO activity_log (candidate_id, user_id, action, details) VALUES (?, ?, ?, ?)",
+    mid = cur.fetchone()["id"]
+    cur.execute(
+        "INSERT INTO activity_log (candidate_id, user_id, action, details) VALUES (%s, %s, %s, %s)",
         (candidate_id, user["id"], "Добавлена встреча", f"{m.meeting_date} ({m.format})"),
     )
-    db.commit()
-    row = db.execute(
+    conn.commit()
+    cur.execute(
         """SELECT m.*, u.display_name as creator_name
-           FROM meetings m JOIN users u ON m.created_by = u.id WHERE m.id = ?""",
-        (cur.lastrowid,),
-    ).fetchone()
-    db.close()
-    return dict(row)
+           FROM meetings m JOIN users u ON m.created_by = u.id WHERE m.id = %s""",
+        (mid,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return {**dict(row), "created_at": str(row["created_at"])}
 
 
 @router.put("/{meeting_id}")
 def update_meeting(candidate_id: int, meeting_id: int, m: MeetingUpdate, user: dict = Depends(get_current_user)):
-    db = get_db()
+    conn = get_db()
+    cur = conn.cursor()
     updates = {k: v for k, v in m.model_dump().items() if v is not None}
     if updates:
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        set_clause = ", ".join(f"{k} = %s" for k in updates)
         values = list(updates.values()) + [meeting_id, candidate_id]
-        db.execute(f"UPDATE meetings SET {set_clause} WHERE id = ? AND candidate_id = ?", values)
-        db.commit()
-    row = db.execute(
+        cur.execute(f"UPDATE meetings SET {set_clause} WHERE id = %s AND candidate_id = %s", values)
+        conn.commit()
+    cur.execute(
         """SELECT m.*, u.display_name as creator_name
-           FROM meetings m JOIN users u ON m.created_by = u.id WHERE m.id = ?""",
+           FROM meetings m JOIN users u ON m.created_by = u.id WHERE m.id = %s""",
         (meeting_id,),
-    ).fetchone()
-    db.close()
+    )
+    row = cur.fetchone()
+    conn.close()
     if not row:
         raise HTTPException(404, "Встреча не найдена")
-    return dict(row)
+    return {**dict(row), "created_at": str(row["created_at"])}
 
 
 @router.delete("/{meeting_id}")
 def delete_meeting(candidate_id: int, meeting_id: int, user: dict = Depends(get_current_user)):
-    db = get_db()
-    db.execute("DELETE FROM meetings WHERE id = ? AND candidate_id = ?", (meeting_id, candidate_id))
-    db.commit()
-    db.close()
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM meetings WHERE id = %s AND candidate_id = %s", (meeting_id, candidate_id))
+    conn.commit()
+    conn.close()
     return {"ok": True}

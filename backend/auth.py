@@ -15,9 +15,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 def authenticate_user(username: str, password: str):
-    db = get_db()
-    row = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    db.close()
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+    row = cur.fetchone()
+    conn.close()
     if not row or not pwd_context.verify(password, row["password_hash"]):
         return None
     return dict(row)
@@ -45,9 +47,11 @@ def get_current_user_from_token(token: str):
     except JWTError:
         raise credentials_exception
 
-    db = get_db()
-    row = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    db.close()
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+    row = cur.fetchone()
+    conn.close()
     if row is None:
         raise credentials_exception
     return dict(row)

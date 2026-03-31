@@ -8,3 +8,5 @@ uploads/*
 screenshots/
 *.egg-info/
 .env
+screenshot.py
+take_screenshots.py

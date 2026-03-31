@@ -2,11 +2,14 @@
 
 Мини-ATS (Applicant Tracking System) для отбора кандидатов в команду AI-стартапа.
 
-## Запуск
+## Локальный запуск
 
 ```bash
 # Установить зависимости
 python3 -m pip install -r requirements.txt
+
+# Указать PostgreSQL URL (нужен работающий PG)
+export DATABASE_URL="postgresql://user:pass@localhost:5432/ats"
 
 # Запустить приложение
 python3 run.py
@@ -36,42 +39,27 @@ python3 run.py
 
 ## Деплой на Render.com
 
-### Вариант 1: Через render.yaml (рекомендуется)
+### Через render.yaml (рекомендуется)
 
 1. Запушить репозиторий на GitHub
 2. Зайти на [render.com](https://render.com) → **New** → **Blueprint**
-3. Подключить репозиторий — Render автоматически найдёт `render.yaml`
-4. Нажать **Apply** — сервис создастся с Persistent Disk для данных
+3. Подключить репозиторий — Render найдёт `render.yaml`
+4. Нажать **Apply** — создастся PostgreSQL база (free), веб-сервис и диск для файлов
 
-### Вариант 2: Вручную
+### Вручную
 
-1. Запушить репозиторий на GitHub
-2. На Render: **New** → **Web Service** → подключить репозиторий
-3. Настройки:
-   - **Runtime**: Docker
-   - **Plan**: Starter ($7/мес — нужен для Persistent Disk)
-   - **Region**: Frankfurt (или ближайший)
-4. Добавить **Disk**:
-   - **Mount Path**: `/data`
-   - **Size**: 1 GB
-5. Добавить **Environment Variables**:
-   - `ATS_SECRET_KEY` — любая случайная строка (Render может сгенерировать)
-   - `ATS_DATA_DIR` = `/data/db`
+1. На Render: **New** → **PostgreSQL** → plan **Free**, создать базу
+2. **New** → **Web Service** → Docker, подключить репозиторий
+3. Environment Variables:
+   - `DATABASE_URL` — Internal Connection String из PostgreSQL
+   - `ATS_SECRET_KEY` — сгенерировать
    - `ATS_UPLOAD_DIR` = `/data/uploads`
-   - `ATS_RELOAD` = `false`
-6. Нажать **Create Web Service**
-
-### Важно
-
-- **Persistent Disk обязателен** — без него SQLite база и загруженные файлы
-  будут удаляться при каждом редеплое (Render Free tier не поддерживает диски)
-- Минимальный план: **Starter** ($7/мес)
-- После деплоя приложение будет доступно по адресу `https://ats-tracker.onrender.com`
+4. Добавить **Disk**: Mount Path `/data`, 1 GB
+5. Create Web Service
 
 ## Стек
 
 - **Backend**: Python + FastAPI
-- **Database**: SQLite
+- **Database**: PostgreSQL (Render Free tier)
 - **Frontend**: Vanilla HTML/CSS/JS
-- Файлы хранятся в `uploads/` (локально) или `/data/uploads` (Render)
-- База данных: `data/ats.db` (локально) или `/data/db/ats.db` (Render)
+- Файлы: `uploads/` (локально) или `/data/uploads` (Render, Persistent Disk)

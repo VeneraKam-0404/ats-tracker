@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 
-from backend.database import init_db, DB_PATH, UPLOAD_PATH
+from backend.database import init_db, UPLOAD_PATH, DATABASE_URL
 from backend.routes import auth, candidates, notes, meetings, tasks, files, ratings
 
 logging.basicConfig(level=logging.INFO)
@@ -42,11 +42,20 @@ def index():
 @app.get("/api/health")
 def health():
     import os
+    from backend.database import get_db
+    db_ok = False
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        db_ok = True
+        conn.close()
+    except Exception:
+        pass
     return {
-        "status": "ok",
-        "db_path": str(DB_PATH),
-        "db_exists": DB_PATH.exists(),
-        "db_dir_writable": os.access(DB_PATH.parent, os.W_OK),
+        "status": "ok" if db_ok else "db_error",
+        "database": "connected" if db_ok else "failed",
+        "database_url_set": bool(DATABASE_URL),
         "upload_path": str(UPLOAD_PATH),
         "upload_dir_writable": os.access(UPLOAD_PATH, os.W_OK),
     }

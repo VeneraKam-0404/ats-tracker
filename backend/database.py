@@ -150,7 +150,7 @@ def init_db():
     # Seed users
     users = [
         ("venera", pwd_context.hash("venera123"), "Venera (CEO)", "ceo", "veneramiray@gmail.com"),
-        ("dmitry", pwd_context.hash("dmitry123"), "Dmitry (Founder)", "cto", ""),
+        ("dmitry", pwd_context.hash("dmitry123"), "Dmitry (Founder)", "cto", "khrapov@gmail.com"),
     ]
     for username, pw_hash, display, role, email in users:
         cur.execute(

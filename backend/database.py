@@ -1,11 +1,17 @@
 import sqlite3
 import os
+import logging
 from pathlib import Path
 from passlib.context import CryptContext
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("ats")
 
 DATA_DIR = Path(os.environ.get("ATS_DATA_DIR", Path(__file__).parent.parent / "data"))
 UPLOAD_PATH = Path(os.environ.get("ATS_UPLOAD_DIR", Path(__file__).parent.parent / "uploads"))
 DB_PATH = DATA_DIR / "ats.db"
+
+logger.info(f"DATA_DIR={DATA_DIR}, DB_PATH={DB_PATH}, UPLOAD_PATH={UPLOAD_PATH}")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -21,6 +27,8 @@ def get_db():
 def init_db():
     os.makedirs(DB_PATH.parent, exist_ok=True)
     os.makedirs(UPLOAD_PATH, exist_ok=True)
+    logger.info(f"DB dir exists: {DB_PATH.parent.exists()}, writable: {os.access(DB_PATH.parent, os.W_OK)}")
+    logger.info(f"Upload dir exists: {UPLOAD_PATH.exists()}, writable: {os.access(UPLOAD_PATH, os.W_OK)}")
     conn = get_db()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS users (

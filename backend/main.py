@@ -1,14 +1,27 @@
-from fastapi import FastAPI
+import logging
+import traceback
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 
-from backend.database import init_db
+from backend.database import init_db, DB_PATH, UPLOAD_PATH
 from backend.routes import auth, candidates, notes, meetings, tasks, files, ratings
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("ats")
 
 app = FastAPI(title="ATS Tracker", version="1.0.0")
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled error on {request.method} {request.url.path}: {exc}")
+    logger.error(traceback.format_exc())
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
+
 
 app.include_router(auth.router)
 app.include_router(candidates.router)
@@ -24,6 +37,19 @@ app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 @app.get("/")
 def index():
     return FileResponse(str(FRONTEND_DIR / "index.html"))
+
+
+@app.get("/api/health")
+def health():
+    import os
+    return {
+        "status": "ok",
+        "db_path": str(DB_PATH),
+        "db_exists": DB_PATH.exists(),
+        "db_dir_writable": os.access(DB_PATH.parent, os.W_OK),
+        "upload_path": str(UPLOAD_PATH),
+        "upload_dir_writable": os.access(UPLOAD_PATH, os.W_OK),
+    }
 
 
 @app.on_event("startup")

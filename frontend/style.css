@@ -337,6 +337,19 @@ tr { cursor: pointer; }
     .header-right { flex-wrap: wrap; }
 }
 
+/* === Context Menu === */
+.card-context-menu {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-lg); z-index: 1000; min-width: 180px; overflow: hidden;
+}
+.ctx-item {
+    padding: 0.5rem 0.75rem; font-size: 0.85rem; cursor: pointer; transition: background 0.1s;
+}
+.ctx-item:hover { background: var(--bg-hover); }
+
+/* === Quick Actions === */
+.quick-actions .btn { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
+
 /* === Today Meetings Widget === */
 .today-widget {
     margin: 0.75rem 1.5rem; padding: 0.75rem 1rem;

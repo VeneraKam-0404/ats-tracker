@@ -1,12 +1,21 @@
+import logging
+import os
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from backend.auth import get_current_user
 from backend.database import get_db
 
+logger = logging.getLogger("ats")
+
 router = APIRouter(prefix="/api/candidates", tags=["candidates"])
 
-VALID_STATUSES = ["Новый", "Резюме рассмотрено", "Тестовое задание", "Интервью", "Оффер", "Принят", "Отказ"]
+VALID_STATUSES = [
+    "Новый", "Резюме рассмотрено", "Запрос информации",
+    "Тестовое задание", "Интервью", "Оффер", "Принят", "Отказ",
+]
+
+APP_URL = os.environ.get("APP_URL", "http://127.0.0.1:8000")
 
 
 class CandidateCreate(BaseModel):
@@ -33,11 +42,11 @@ class CandidateUpdate(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: str
+    note: str = ""
 
 
 def _candidate_dict(row, cur):
     d = dict(row)
-    # Fetch ratings
     cur.execute(
         "SELECT r.score, r.user_id, u.display_name FROM ratings r JOIN users u ON r.user_id = u.id WHERE r.candidate_id = %s",
         (d["id"],),
@@ -46,14 +55,12 @@ def _candidate_dict(row, cur):
     d["ratings"] = [dict(r) for r in ratings]
     avg = sum(r["score"] for r in ratings) / len(ratings) if ratings else 0
     d["avg_rating"] = round(avg, 1)
-    # Last activity
     cur.execute(
         "SELECT created_at FROM activity_log WHERE candidate_id = %s ORDER BY created_at DESC LIMIT 1",
         (d["id"],),
     )
     last = cur.fetchone()
     d["last_activity"] = str(last["created_at"]) if last else str(d["created_at"])
-    # Convert timestamps to strings
     for k in ("created_at", "updated_at"):
         if d.get(k):
             d[k] = str(d[k])
@@ -65,6 +72,53 @@ def _log_activity(cur, candidate_id, user_id, action, details=""):
         "INSERT INTO activity_log (candidate_id, user_id, action, details) VALUES (%s, %s, %s, %s)",
         (candidate_id, user_id, action, details),
     )
+
+
+def _notify_status_change(cur, candidate, old_status, new_status, changed_by, note=""):
+    """Send email to the OTHER user when status changes."""
+    from backend.email_service import is_email_configured, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD
+    if not is_email_configured():
+        return
+
+    import smtplib
+    from email.mime.text import MIMEText
+
+    # Get all users except the one who made the change
+    cur.execute("SELECT email, display_name FROM users WHERE id != %s AND email IS NOT NULL AND email != ''",
+                (changed_by["id"],))
+    recipients = cur.fetchall()
+    if not recipients:
+        return
+
+    candidate_name = candidate["full_name"]
+    subject = f"[ATS] Статус изменён: {candidate_name} → {new_status}"
+
+    body_lines = [
+        f"{changed_by['display_name']} изменил(а) статус кандидата:",
+        f"",
+        f"Кандидат: {candidate_name}",
+        f"Позиция: {candidate.get('position', '')}",
+        f"Статус: {old_status} → {new_status}",
+    ]
+    if note:
+        body_lines += [f"", f"Комментарий: {note}"]
+    body_lines += [f"", f"Открыть в ATS: {APP_URL}"]
+
+    body = "\n".join(body_lines)
+
+    try:
+        for r in recipients:
+            msg = MIMEText(body, "plain", "utf-8")
+            msg["From"] = SMTP_USER
+            msg["To"] = r["email"]
+            msg["Subject"] = subject
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
+            logger.info(f"Status change email sent to {r['email']}")
+    except Exception as e:
+        logger.error(f"Failed to send status change email: {e}")
 
 
 @router.get("")
@@ -161,6 +215,7 @@ def update_candidate(candidate_id: int, c: CandidateUpdate, user: dict = Depends
     if "status" in updates:
         _log_activity(cur, candidate_id, user["id"], "Статус изменён",
                       f'{existing["status"]} → {updates["status"]}')
+        _notify_status_change(cur, existing, existing["status"], updates["status"], user)
     else:
         _log_activity(cur, candidate_id, user["id"], "Профиль обновлён", "")
 
@@ -183,10 +238,34 @@ def update_status(candidate_id: int, s: StatusUpdate, user: dict = Depends(get_c
     if not existing:
         conn.close()
         raise HTTPException(404, "Кандидат не найден")
+
+    old_status = existing["status"]
     cur.execute("UPDATE candidates SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
                 (s.status, candidate_id))
-    _log_activity(cur, candidate_id, user["id"], "Статус изменён",
-                  f'{existing["status"]} → {s.status}')
+
+    detail_text = f'{old_status} → {s.status}'
+    if s.note:
+        detail_text += f' | {s.note}'
+    _log_activity(cur, candidate_id, user["id"], "Статус изменён", detail_text)
+
+    # If status is "Запрос информации" and there's a note, save it as a note too
+    if s.status == "Запрос информации" and s.note:
+        cur.execute(
+            "INSERT INTO notes (candidate_id, author_id, content) VALUES (%s, %s, %s)",
+            (candidate_id, user["id"], f"**Запрос информации:**\n{s.note}"),
+        )
+        _log_activity(cur, candidate_id, user["id"], "Запрос информации", s.note[:100])
+
+    # If status is "Тестовое задание" and there's a note, create test assignment
+    if s.status == "Тестовое задание" and s.note:
+        cur.execute(
+            "INSERT INTO test_assignments (candidate_id, description, status, created_by) VALUES (%s, %s, %s, %s)",
+            (candidate_id, s.note, "Выдано", user["id"]),
+        )
+        _log_activity(cur, candidate_id, user["id"], "Тестовое задание создано", s.note[:100])
+
+    _notify_status_change(cur, existing, old_status, s.status, user, note=s.note)
+
     conn.commit()
     cur.execute("SELECT * FROM candidates WHERE id = %s", (candidate_id,))
     row = cur.fetchone()

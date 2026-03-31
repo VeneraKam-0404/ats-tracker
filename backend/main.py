@@ -88,6 +88,26 @@ def all_meetings(date_from: str = "", date_to: str = "", user: dict = Depends(ge
     return [{**dict(r), "created_at": str(r["created_at"])} for r in rows]
 
 
+@app.get("/api/info-requests")
+def info_requests(user: dict = Depends(get_current_user)):
+    """Get candidates with 'Запрос информации' status and the request note."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT c.id, c.full_name, c.position,
+               (SELECT n.content FROM notes n WHERE n.candidate_id = c.id
+                AND n.content LIKE '**Запрос информации:**%%'
+                ORDER BY n.created_at DESC LIMIT 1) as request_text,
+               c.updated_at
+        FROM candidates c
+        WHERE c.status = 'Запрос информации'
+        ORDER BY c.updated_at DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    return [{**dict(r), "updated_at": str(r["updated_at"]) if r["updated_at"] else ""} for r in rows]
+
+
 @app.on_event("startup")
 def startup():
     init_db()

@@ -5,9 +5,10 @@ let candidates = [];
 let currentCandidateId = null;
 let calendarWeekStart = getMonday(new Date());
 
-const STATUSES = ['Новый', 'Резюме рассмотрено', 'Тестовое задание', 'Интервью', 'Оффер', 'Принят', 'Отказ'];
+const STATUSES = ['Новый', 'Резюме рассмотрено', 'Запрос информации', 'Тестовое задание', 'Интервью', 'Оффер', 'Принят', 'Отказ'];
 const STATUS_CLASSES = {
     'Новый': 'status-new', 'Резюме рассмотрено': 'status-reviewed',
+    'Запрос информации': 'status-test',
     'Тестовое задание': 'status-test', 'Интервью': 'status-interview',
     'Оффер': 'status-offer', 'Принят': 'status-hired', 'Отказ': 'status-rejected'
 };
@@ -98,6 +99,7 @@ async function loadCandidates() {
         renderTable();
         updatePositionFilter();
         loadTodayMeetings();
+        loadInfoRequests();
     } catch (err) { console.error(err); }
 }
 
@@ -127,6 +129,32 @@ async function loadTodayMeetings() {
     } catch (err) {
         widget.innerHTML = '';
     }
+}
+
+// === Info Requests Widget ===
+async function loadInfoRequests() {
+    const container = document.getElementById('today-meetings-widget');
+    try {
+        const requests = await api('/api/info-requests');
+        if (requests.length === 0) return;
+        // Append after today meetings
+        const widget = document.createElement('div');
+        widget.className = 'today-widget';
+        widget.style.borderLeftColor = 'var(--warning)';
+        widget.innerHTML = `
+            <div class="today-widget-title" style="color:var(--warning)">Запросы информации (${requests.length})</div>
+            ${requests.map(r => {
+                const text = (r.request_text || '').replace('**Запрос информации:**\n', '').substring(0, 80);
+                return `
+                <div class="today-widget-item" onclick="openCandidateDetail(${r.id})">
+                    <span class="tw-name">${esc(r.full_name)}</span>
+                    <span class="tw-pos">${esc(r.position || '')}</span>
+                    <span style="font-size:0.8rem;color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(text)}</span>
+                </div>`;
+            }).join('')}
+        `;
+        container.appendChild(widget);
+    } catch (err) { /* silent */ }
 }
 
 // === Kanban ===
@@ -172,17 +200,87 @@ function renderKanban() {
             card.addEventListener('click', () => openCandidateDetail(c.id));
             const stars = c.avg_rating ? '★'.repeat(Math.round(c.avg_rating)) + '☆'.repeat(5 - Math.round(c.avg_rating)) : '';
             card.innerHTML = `
-                <div class="card-name">${esc(c.full_name)}</div>
+                <div style="display:flex;justify-content:space-between;align-items:start">
+                    <div class="card-name">${esc(c.full_name)}</div>
+                    <button class="btn btn-ghost btn-sm card-menu-btn" style="padding:0.1rem 0.3rem;font-size:0.9rem;line-height:1" data-cid="${c.id}">⋮</button>
+                </div>
                 <div class="card-position">${esc(c.position || '—')}</div>
                 <div class="card-meta">
                     <span>${formatDate(c.last_activity)}</span>
                     <span class="card-rating">${stars}</span>
                 </div>
             `;
+            card.querySelector('.card-menu-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                showCardContextMenu(e, c.id, c.full_name, c.status);
+            });
             cards.appendChild(card);
         });
         board.appendChild(col);
     });
+}
+
+// === Context Menu & Quick Actions ===
+function showCardContextMenu(e, cid, name, currentStatus) {
+    // Remove any existing menu
+    document.querySelectorAll('.card-context-menu').forEach(m => m.remove());
+    const menu = document.createElement('div');
+    menu.className = 'card-context-menu';
+    const actions = [
+        { label: 'Резюме рассмотрено', status: 'Резюме рассмотрено' },
+        { label: 'Запросить информацию', status: 'Запрос информации', needsNote: true },
+        { label: 'Отправить тестовое', status: 'Тестовое задание', needsNote: true },
+        { label: 'Назначить интервью', status: 'Интервью', openMeeting: true },
+        { label: 'Оффер', status: 'Оффер' },
+        { label: 'Отказ', status: 'Отказ' },
+    ].filter(a => a.status !== currentStatus);
+
+    menu.innerHTML = actions.map(a =>
+        `<div class="ctx-item" data-status="${a.status}" data-needs-note="${a.needsNote||''}" data-open-meeting="${a.openMeeting||''}">${a.label}</div>`
+    ).join('');
+    menu.style.position = 'fixed';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    document.body.appendChild(menu);
+
+    menu.querySelectorAll('.ctx-item').forEach(item => {
+        item.addEventListener('click', async () => {
+            menu.remove();
+            const status = item.dataset.status;
+            const needsNote = item.dataset.needsNote === 'true';
+            const openMeeting = item.dataset.openMeeting === 'true';
+            await quickStatusChange(cid, status, needsNote, openMeeting);
+        });
+    });
+
+    const closeMenu = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', closeMenu); }};
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+}
+
+async function quickStatusChange(cid, status, needsNote, openMeeting) {
+    let note = '';
+    if (needsNote) {
+        const prompts = {
+            'Запрос информации': 'Что запросить у кандидата?',
+            'Тестовое задание': 'Описание тестового задания:',
+        };
+        note = prompt(prompts[status] || 'Комментарий:');
+        if (note === null) return; // cancelled
+    }
+    await api(`/api/candidates/${cid}/status`, { method: 'PATCH', body: { status, note } });
+    loadCandidates();
+    if (openMeeting) {
+        openCandidateDetail(cid);
+        // Wait for modal to render, then switch to meetings tab and open form
+        setTimeout(() => {
+            const meetTab = document.querySelector('[data-tab="meetings"]');
+            if (meetTab) meetTab.click();
+            setTimeout(() => {
+                const section = document.getElementById('meeting-form-section');
+                if (section) section.open = true;
+            }, 200);
+        }, 500);
+    }
 }
 
 // === Calendar ===
@@ -375,13 +473,21 @@ async function openCandidateDetail(id) {
         const myRating = ratings.find(r => r.user_id === currentUser.id);
 
         detail.innerHTML = `
-            <!-- Profile -->
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem">
+            <!-- Profile & Quick Actions -->
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem">
                 <span class="status-badge ${STATUS_CLASSES[candidate.status]}" style="font-size:0.85rem;padding:0.25rem 0.75rem">${candidate.status}</span>
                 <div style="display:flex;gap:0.5rem">
                     <button class="btn btn-ghost btn-sm" onclick="editCandidate(${id})">Редактировать</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteCandidate(${id})">Удалить</button>
                 </div>
+            </div>
+            <div style="display:flex;gap:0.35rem;flex-wrap:wrap;margin-bottom:1rem" class="quick-actions">
+                ${candidate.status !== 'Резюме рассмотрено' ? `<button class="btn btn-ghost btn-sm" onclick="quickStatusChange(${id},'Резюме рассмотрено')">Резюме рассмотрено</button>` : ''}
+                ${candidate.status !== 'Запрос информации' ? `<button class="btn btn-ghost btn-sm" onclick="quickStatusChange(${id},'Запрос информации',true)">Запросить информацию</button>` : ''}
+                ${candidate.status !== 'Тестовое задание' ? `<button class="btn btn-ghost btn-sm" onclick="quickStatusChange(${id},'Тестовое задание',true)">Отправить тестовое</button>` : ''}
+                ${candidate.status !== 'Интервью' ? `<button class="btn btn-ghost btn-sm" onclick="quickStatusChange(${id},'Интервью',false,true)">Назначить интервью</button>` : ''}
+                ${candidate.status !== 'Оффер' ? `<button class="btn btn-ghost btn-sm" style="color:var(--success)" onclick="quickStatusChange(${id},'Оффер')">Оффер</button>` : ''}
+                ${candidate.status !== 'Отказ' ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="quickStatusChange(${id},'Отказ')">Отказ</button>` : ''}
             </div>
 
             <div class="candidate-profile">

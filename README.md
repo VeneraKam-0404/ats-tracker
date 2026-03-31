@@ -34,10 +34,44 @@ python3 run.py
 - Тёмная / светлая тема
 - Адаптивный дизайн
 
+## Деплой на Render.com
+
+### Вариант 1: Через render.yaml (рекомендуется)
+
+1. Запушить репозиторий на GitHub
+2. Зайти на [render.com](https://render.com) → **New** → **Blueprint**
+3. Подключить репозиторий — Render автоматически найдёт `render.yaml`
+4. Нажать **Apply** — сервис создастся с Persistent Disk для данных
+
+### Вариант 2: Вручную
+
+1. Запушить репозиторий на GitHub
+2. На Render: **New** → **Web Service** → подключить репозиторий
+3. Настройки:
+   - **Runtime**: Docker
+   - **Plan**: Starter ($7/мес — нужен для Persistent Disk)
+   - **Region**: Frankfurt (или ближайший)
+4. Добавить **Disk**:
+   - **Mount Path**: `/data`
+   - **Size**: 1 GB
+5. Добавить **Environment Variables**:
+   - `ATS_SECRET_KEY` — любая случайная строка (Render может сгенерировать)
+   - `ATS_DATA_DIR` = `/data/db`
+   - `ATS_UPLOAD_DIR` = `/data/uploads`
+   - `ATS_RELOAD` = `false`
+6. Нажать **Create Web Service**
+
+### Важно
+
+- **Persistent Disk обязателен** — без него SQLite база и загруженные файлы
+  будут удаляться при каждом редеплое (Render Free tier не поддерживает диски)
+- Минимальный план: **Starter** ($7/мес)
+- После деплоя приложение будет доступно по адресу `https://ats-tracker.onrender.com`
+
 ## Стек
 
 - **Backend**: Python + FastAPI
 - **Database**: SQLite
 - **Frontend**: Vanilla HTML/CSS/JS
-- Файлы хранятся в `uploads/`
-- База данных: `data/ats.db`
+- Файлы хранятся в `uploads/` (локально) или `/data/uploads` (Render)
+- База данных: `data/ats.db` (локально) или `/data/db/ats.db` (Render)

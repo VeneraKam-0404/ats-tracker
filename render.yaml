@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ats-tracker
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    envVars:
+      - key: ATS_SECRET_KEY
+        generateValue: true
+      - key: ATS_DATA_DIR
+        value: /data/db
+      - key: ATS_UPLOAD_DIR
+        value: /data/uploads
+      - key: ATS_RELOAD
+        value: "false"
+    disk:
+      name: ats-data
+      mountPath: /data
+      sizeGB: 1

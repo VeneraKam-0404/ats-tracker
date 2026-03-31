@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -5,7 +6,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from backend.database import get_db
 
-SECRET_KEY = "ats-tracker-secret-key-change-in-production"
+SECRET_KEY = os.environ.get("ATS_SECRET_KEY", "ats-tracker-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 

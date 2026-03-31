@@ -3,8 +3,9 @@ import os
 from pathlib import Path
 from passlib.context import CryptContext
 
-DB_PATH = Path(__file__).parent.parent / "data" / "ats.db"
-UPLOAD_PATH = Path(__file__).parent.parent / "uploads"
+DATA_DIR = Path(os.environ.get("ATS_DATA_DIR", Path(__file__).parent.parent / "data"))
+UPLOAD_PATH = Path(os.environ.get("ATS_UPLOAD_DIR", Path(__file__).parent.parent / "uploads"))
+DB_PATH = DATA_DIR / "ats.db"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

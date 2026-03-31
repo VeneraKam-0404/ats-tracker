@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+data/
+uploads/*.pdf
+uploads/*.png
+uploads/*.jpg
+screenshots/
+screenshot.py
+take_screenshots.py
+.git/
+.gitignore
+*.db
+*.db-shm
+*.db-wal

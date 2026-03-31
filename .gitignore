@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+data/ats.db
+data/ats.db-shm
+data/ats.db-wal
+uploads/*
+!uploads/.gitkeep
+screenshots/
+*.egg-info/
+.env

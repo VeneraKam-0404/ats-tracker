@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATS Tracker</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Login -->
+        <div id="login-page" class="page active">
+            <div class="login-container">
+                <h1>ATS Tracker</h1>
+                <p class="subtitle">Система отбора кандидатов</p>
+                <form id="login-form">
+                    <input type="text" id="login-username" placeholder="Логин" required autocomplete="username">
+                    <input type="password" id="login-password" placeholder="Пароль" required autocomplete="current-password">
+                    <button type="submit" class="btn btn-primary">Войти</button>
+                    <p id="login-error" class="error"></p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Main App -->
+        <div id="main-app" class="page">
+            <header>
+                <div class="header-left">
+                    <h1 class="logo">ATS</h1>
+                    <nav>
+                        <button class="nav-btn active" data-view="kanban">Канбан</button>
+                        <button class="nav-btn" data-view="table">Таблица</button>
+                    </nav>
+                </div>
+                <div class="header-right">
+                    <button id="add-candidate-btn" class="btn btn-primary btn-sm">+ Кандидат</button>
+                    <button id="theme-toggle" class="btn btn-ghost btn-sm" title="Сменить тему">☀</button>
+                    <span id="current-user" class="user-badge"></span>
+                    <button id="logout-btn" class="btn btn-ghost btn-sm">Выход</button>
+                </div>
+            </header>
+
+            <main>
+                <!-- Kanban View -->
+                <div id="kanban-view" class="view active">
+                    <div class="kanban-board" id="kanban-board"></div>
+                </div>
+
+                <!-- Table View -->
+                <div id="table-view" class="view">
+                    <div class="table-controls">
+                        <input type="text" id="search-input" placeholder="Поиск по имени, позиции..." class="search-input">
+                        <select id="filter-status" class="select">
+                            <option value="">Все статусы</option>
+                            <option value="Новый">Новый</option>
+                            <option value="Резюме рассмотрено">Резюме рассмотрено</option>
+                            <option value="Тестовое задание">Тестовое задание</option>
+                            <option value="Интервью">Интервью</option>
+                            <option value="Оффер">Оффер</option>
+                            <option value="Принят">Принят</option>
+                            <option value="Отказ">Отказ</option>
+                        </select>
+                        <select id="filter-position" class="select">
+                            <option value="">Все позиции</option>
+                        </select>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="candidates-table">
+                            <thead>
+                                <tr>
+                                    <th data-sort="full_name">ФИО</th>
+                                    <th data-sort="position">Позиция</th>
+                                    <th data-sort="status">Статус</th>
+                                    <th>Оценка</th>
+                                    <th data-sort="created_at">Добавлен</th>
+                                    <th>Активность</th>
+                                </tr>
+                            </thead>
+                            <tbody id="candidates-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Candidate Detail Modal -->
+        <div id="candidate-modal" class="modal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h2 id="modal-candidate-name"></h2>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body" id="candidate-detail"></div>
+            </div>
+        </div>
+
+        <!-- Add/Edit Candidate Modal -->
+        <div id="edit-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="edit-modal-title">Новый кандидат</h2>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="candidate-form">
+                        <input type="hidden" id="cf-id">
+                        <label>ФИО *</label>
+                        <input type="text" id="cf-name" required>
+                        <label>Позиция</label>
+                        <input type="text" id="cf-position" placeholder="ML Engineer, Frontend Developer...">
+                        <label>Email</label>
+                        <input type="email" id="cf-email">
+                        <label>Телефон</label>
+                        <input type="tel" id="cf-phone">
+                        <label>Telegram</label>
+                        <input type="text" id="cf-telegram" placeholder="@username">
+                        <label>Портфолио / GitHub</label>
+                        <input type="url" id="cf-portfolio">
+                        <label>Источник</label>
+                        <input type="text" id="cf-source" placeholder="HeadHunter, LinkedIn, реферал...">
+                        <label>Статус</label>
+                        <select id="cf-status" class="select">
+                            <option value="Новый">Новый</option>
+                            <option value="Резюме рассмотрено">Резюме рассмотрено</option>
+                            <option value="Тестовое задание">Тестовое задание</option>
+                            <option value="Интервью">Интервью</option>
+                            <option value="Оффер">Оффер</option>
+                            <option value="Принят">Принят</option>
+                            <option value="Отказ">Отказ</option>
+                        </select>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">Сохранить</button>
+                            <button type="button" class="btn btn-ghost modal-cancel">Отмена</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>

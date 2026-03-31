@@ -413,7 +413,7 @@ async function openCandidateDetail(id) {
                     <div class="file-item">
                         <div class="file-info">
                             <span class="file-icon">${f.file_type === 'resume' ? '📄' : '📎'}</span>
-                            <a href="/api/candidates/${id}/files/${f.id}/download" target="_blank">${esc(f.original_filename)}</a>
+                            <a href="/api/candidates/${id}/files/${f.id}/download?token=${encodeURIComponent(token)}" target="_blank">${esc(f.original_filename)}</a>
                             <span style="color:var(--text-secondary);font-size:0.75rem">${esc(f.uploader_name)} · ${formatDate(f.created_at)}</span>
                         </div>
                         <button class="btn btn-ghost btn-sm" onclick="deleteFile(${id},${f.id})">✕</button>

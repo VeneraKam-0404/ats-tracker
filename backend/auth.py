@@ -30,7 +30,8 @@ def create_access_token(data: dict):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)):
+def get_current_user_from_token(token: str):
+    """Validate a token string and return the user dict."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid authentication credentials",
@@ -50,3 +51,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     if row is None:
         raise credentials_exception
     return dict(row)
+
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    return get_current_user_from_token(token)

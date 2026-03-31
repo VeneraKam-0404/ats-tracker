@@ -1,8 +1,8 @@
 import uuid
 import os
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse
-from backend.auth import get_current_user
+from backend.auth import get_current_user, get_current_user_from_token
 from backend.database import get_db, UPLOAD_PATH
 
 router = APIRouter(prefix="/api/candidates/{candidate_id}/files", tags=["files"])
@@ -59,7 +59,8 @@ async def upload_file(
 
 
 @router.get("/{file_id}/download")
-def download_file(candidate_id: int, file_id: int, user: dict = Depends(get_current_user)):
+def download_file(candidate_id: int, file_id: int, token: str = Query(...)):
+    get_current_user_from_token(token)
     db = get_db()
     row = db.execute("SELECT * FROM files WHERE id = ? AND candidate_id = ?", (file_id, candidate_id)).fetchone()
     db.close()

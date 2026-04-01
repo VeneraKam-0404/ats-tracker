@@ -138,6 +138,25 @@ def init_db():
         )
     """)
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS stage_ratings (
+            id SERIAL PRIMARY KEY,
+            candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            stage TEXT NOT NULL,
+            score INTEGER NOT NULL CHECK(score >= 1 AND score <= 5),
+            comment TEXT DEFAULT '',
+            meeting_id INTEGER REFERENCES meetings(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(candidate_id, user_id, stage, meeting_id)
+        )
+    """)
+    # Index for fast lookup
+    cur.execute("""
+        DO $$ BEGIN
+            CREATE INDEX IF NOT EXISTS idx_stage_ratings_candidate ON stage_ratings(candidate_id);
+        END $$
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS activity_log (
             id SERIAL PRIMARY KEY,
             candidate_id INTEGER NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,

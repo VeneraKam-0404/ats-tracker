@@ -198,21 +198,39 @@ function renderKanban() {
             });
             card.addEventListener('dragend', () => card.classList.remove('dragging'));
             card.addEventListener('click', () => openCandidateDetail(c.id));
-            const stars = c.avg_rating ? '★'.repeat(Math.round(c.avg_rating)) + '☆'.repeat(5 - Math.round(c.avg_rating)) : '';
+            const us = c.user_scores || {};
+            const ut = c.user_trends || {};
+            const trendIcon = t => t === 'up' ? '↑' : t === 'down' ? '↓' : '→';
+            const trendColor = t => t === 'up' ? 'var(--success)' : t === 'down' ? 'var(--danger)' : 'var(--text-secondary)';
+            const miniStars = (score) => score ? '<span style="color:var(--warning)">' + '★'.repeat(score) + '☆'.repeat(5-score) + '</span>' : '<span style="color:var(--border)">☆☆☆☆☆</span>';
+            const divergent = c.score_divergence > 2;
             card.innerHTML = `
                 <div style="display:flex;justify-content:space-between;align-items:start">
                     <div class="card-name">${esc(c.full_name)}</div>
-                    <button class="btn btn-ghost btn-sm card-menu-btn" style="padding:0.1rem 0.3rem;font-size:0.9rem;line-height:1" data-cid="${c.id}">⋮</button>
+                    <div style="display:flex;gap:0.15rem">
+                        <button class="btn btn-ghost btn-sm card-rate-btn" style="padding:0.1rem 0.3rem;font-size:0.75rem;line-height:1" data-cid="${c.id}" title="Оценить">★</button>
+                        <button class="btn btn-ghost btn-sm card-menu-btn" style="padding:0.1rem 0.3rem;font-size:0.9rem;line-height:1" data-cid="${c.id}">⋮</button>
+                    </div>
                 </div>
                 <div class="card-position">${esc(c.position || '—')}</div>
+                <div style="font-size:0.7rem;margin-top:0.35rem;line-height:1.4">
+                    ${us.venera ? `<div>V: ${miniStars(us.venera)} <span style="color:${trendColor(ut.venera)};font-weight:600">${trendIcon(ut.venera)}</span></div>` : ''}
+                    ${us.dmitry ? `<div>D: ${miniStars(us.dmitry)} <span style="color:${trendColor(ut.dmitry)};font-weight:600">${trendIcon(ut.dmitry)}</span></div>` : ''}
+                    ${!us.venera && !us.dmitry ? '<div style="color:var(--border)">Нет оценок</div>' : ''}
+                </div>
                 <div class="card-meta">
                     <span>${formatDate(c.last_activity)}</span>
-                    <span class="card-rating">${stars}</span>
+                    ${c.stage_avg ? `<span style="font-weight:600">${c.stage_avg}</span>` : ''}
                 </div>
             `;
+            if (divergent) card.style.borderColor = 'var(--warning)';
             card.querySelector('.card-menu-btn').addEventListener('click', (e) => {
                 e.stopPropagation();
                 showCardContextMenu(e, c.id, c.full_name, c.status);
+            });
+            card.querySelector('.card-rate-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                showQuickRate(e, c.id, c.status);
             });
             cards.appendChild(card);
         });
@@ -281,6 +299,49 @@ async function quickStatusChange(cid, status, needsNote, openMeeting) {
             }, 200);
         }, 500);
     }
+}
+
+// === Quick Rate Popup ===
+function statusToStage(status) {
+    const map = {'Резюме рассмотрено': 'resume', 'Запрос информации': 'resume', 'Тестовое задание': 'test', 'Интервью': 'interview', 'Оффер': 'offer', 'Принят': 'offer'};
+    return map[status] || 'resume';
+}
+
+function showQuickRate(e, cid, status) {
+    document.querySelectorAll('.quick-rate-popup').forEach(m => m.remove());
+    const stage = statusToStage(status);
+    const stageLabels = {resume:'Резюме', test:'Тестовое', interview:'Интервью', offer:'Итоговая'};
+    const popup = document.createElement('div');
+    popup.className = 'quick-rate-popup';
+    popup.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:1001;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:0.75rem;min-width:220px`;
+    popup.innerHTML = `
+        <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.35rem">${stageLabels[stage] || stage}</div>
+        <div class="stars qr-stars" style="font-size:1.5rem;cursor:pointer">
+            ${[1,2,3,4,5].map(i => `<span class="star" data-s="${i}">☆</span>`).join('')}
+        </div>
+        <input type="text" class="qr-comment" placeholder="Комментарий (необязательно)" style="margin-top:0.5rem;font-size:0.8rem">
+        <button class="btn btn-primary btn-sm qr-save" style="margin-top:0.5rem;width:100%" disabled>Сохранить</button>
+    `;
+    document.body.appendChild(popup);
+    let score = 0;
+    popup.querySelectorAll('.qr-stars .star').forEach(star => {
+        star.addEventListener('click', () => {
+            score = parseInt(star.dataset.s);
+            popup.querySelectorAll('.qr-stars .star').forEach((s, i) => {
+                s.textContent = i < score ? '★' : '☆';
+                s.style.color = i < score ? 'var(--warning)' : '';
+            });
+            popup.querySelector('.qr-save').disabled = false;
+        });
+    });
+    popup.querySelector('.qr-save').addEventListener('click', async () => {
+        const comment = popup.querySelector('.qr-comment').value;
+        await api(`/api/candidates/${cid}/ratings/stages`, { method: 'POST', body: { stage, score, comment } });
+        popup.remove();
+        loadCandidates();
+    });
+    const closePopup = (ev) => { if (!popup.contains(ev.target)) { popup.remove(); document.removeEventListener('click', closePopup); }};
+    setTimeout(() => document.addEventListener('click', closePopup), 0);
 }
 
 // === Calendar ===
@@ -371,12 +432,18 @@ function renderTable() {
     });
 
     tbody.innerHTML = filtered.map(c => {
-        const stars = c.avg_rating ? '★'.repeat(Math.round(c.avg_rating)) + '☆'.repeat(5 - Math.round(c.avg_rating)) : '—';
-        return `<tr data-id="${c.id}">
+        const us = c.user_scores || {};
+        const sv = us.venera || 0, sd = us.dmitry || 0;
+        const delta = sv && sd ? Math.abs(sv - sd) : 0;
+        const deltaStyle = delta > 2 ? 'color:var(--warning);font-weight:700' : 'color:var(--text-secondary)';
+        const miniS = s => s ? '<span style="color:var(--warning)">' + '★'.repeat(s) + '</span>' + '<span style="color:var(--border)">' + '☆'.repeat(5-s) + '</span>' : '—';
+        return `<tr data-id="${c.id}" ${delta > 2 ? 'style="background:rgba(245,158,11,0.08)"' : ''}>
             <td><strong>${esc(c.full_name)}</strong></td>
             <td>${esc(c.position || '—')}</td>
             <td><span class="status-badge ${STATUS_CLASSES[c.status]}">${c.status}</span></td>
-            <td style="color:var(--warning)">${stars}</td>
+            <td style="font-size:0.8rem">${miniS(sv)}</td>
+            <td style="font-size:0.8rem">${miniS(sd)}</td>
+            <td style="${deltaStyle};font-size:0.85rem;text-align:center">${delta || '—'}</td>
             <td>${formatDate(c.created_at)}</td>
             <td>${formatDate(c.last_activity)}</td>
         </tr>`;
@@ -500,14 +567,8 @@ async function openCandidateDetail(id) {
                 ${profileField('Добавлен', formatDate(candidate.created_at))}
             </div>
 
-            <!-- Rating -->
-            <div class="rating-section">
-                <span class="rating-label">Моя оценка:</span>
-                <div class="stars" id="my-rating">
-                    ${[1,2,3,4,5].map(i => `<span class="star ${myRating && myRating.score >= i ? 'filled' : ''}" data-score="${i}">★</span>`).join('')}
-                </div>
-                <span class="rating-label" style="margin-left:auto">Средняя: <strong>${candidate.avg_rating || '—'}</strong></span>
-            </div>
+            <!-- Star Track -->
+            <div id="star-track" class="star-track"></div>
 
             <!-- Tabs -->
             <div class="detail-tabs">
@@ -670,20 +731,94 @@ async function openCandidateDetail(id) {
             });
         });
 
-        // Star rating
-        detail.querySelectorAll('#my-rating .star').forEach(star => {
-            star.addEventListener('click', async () => {
-                const score = parseInt(star.dataset.score);
-                await api(`/api/candidates/${id}/ratings`, { method: 'POST', body: { score } });
-                openCandidateDetail(id);
-                loadCandidates();
-            });
-        });
+        // Star Track
+        renderStarTrack(id, candidate);
 
     } catch (err) {
         detail.innerHTML = `<p class="error">Ошибка: ${err.message}</p>`;
     }
 }
+
+// === Star Track ===
+async function renderStarTrack(candidateId, candidate) {
+    const track = document.getElementById('star-track');
+    if (!track) return;
+    let stageRatings = [];
+    try { stageRatings = await api(`/api/candidates/${candidateId}/ratings/stages`); } catch(e) {}
+
+    const stages = [
+        { key: 'resume', label: 'Резюме' },
+        { key: 'test', label: 'Тестовое' },
+        { key: 'interview', label: 'Интервью' },
+        { key: 'offer', label: 'Итоговая' },
+    ];
+    const users = [
+        { username: 'venera', label: 'V', color: '#22c55e' },
+        { username: 'dmitry', label: 'D', color: '#6366f1' },
+    ];
+
+    // Group ratings by stage+user
+    const byStageUser = {};
+    for (const r of stageRatings) {
+        const key = `${r.stage}_${r.username}`;
+        byStageUser[key] = r; // last wins (sorted by created_at ASC)
+    }
+
+    // Compute trend
+    const allScores = stageRatings.map(r => r.score);
+    const avgScore = allScores.length ? (allScores.reduce((a,b)=>a+b,0) / allScores.length).toFixed(1) : '—';
+    let trendHtml = '';
+    if (allScores.length >= 2) {
+        const last = allScores[allScores.length-1], prev = allScores[allScores.length-2];
+        if (last > prev) trendHtml = `<span style="color:var(--success);font-weight:700">↑</span>`;
+        else if (last < prev) trendHtml = `<span style="color:var(--danger);font-weight:700">↓</span>`;
+        else trendHtml = `<span style="color:var(--text-secondary)">→</span>`;
+    }
+
+    const starsHtml = (score, color) => {
+        if (!score) return '<span style="color:var(--border);font-size:0.85rem">☆☆☆☆☆</span>';
+        return [1,2,3,4,5].map(i =>
+            `<span style="color:${i <= score ? color : 'var(--border)'};font-size:0.85rem">${i <= score ? '★' : '☆'}</span>`
+        ).join('');
+    };
+
+    track.innerHTML = `
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem">
+            <span style="font-size:0.85rem;font-weight:600">Средний балл: ${avgScore}</span>
+            ${trendHtml}
+        </div>
+        <div class="star-track-grid">
+            ${stages.map(s => {
+                return `<div class="star-track-stage">
+                    <div class="star-track-label">${s.label}</div>
+                    ${users.map(u => {
+                        const r = byStageUser[`${s.key}_${u.username}`];
+                        const score = r ? r.score : 0;
+                        const comment = r && r.comment ? r.comment : '';
+                        return `<div class="star-track-row">
+                            <span style="font-size:0.7rem;font-weight:600;color:${u.color};width:1rem">${u.label}</span>
+                            <span class="star-track-stars" data-stage="${s.key}" data-cid="${candidateId}">${starsHtml(score, u.color)}</span>
+                            ${comment ? `<span title="${esc(comment)}" style="cursor:help;font-size:0.75rem;color:var(--text-secondary)">💬</span>` : ''}
+                        </div>`;
+                    }).join('')}
+                    <button class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:0.1rem 0.3rem;margin-top:0.15rem" onclick="rateStage('${s.key}',${candidateId})">Оценить</button>
+                </div>`;
+            }).join('')}
+        </div>
+    `;
+}
+
+window.rateStage = async function(stage, cid) {
+    const stageLabels = {resume:'Оценка резюме', test:'Оценка тестового', interview:'Оценка интервью', offer:'Итоговая оценка'};
+    const scoreStr = prompt(`${stageLabels[stage] || stage} (1-5):`);
+    if (!scoreStr) return;
+    const score = parseInt(scoreStr);
+    if (score < 1 || score > 5) { alert('Оценка от 1 до 5'); return; }
+    const comment = prompt('Короткий комментарий (необязательно):') || '';
+    await api(`/api/candidates/${cid}/ratings/stages`, { method: 'POST', body: { stage, score, comment } });
+    openCandidateDetail(cid);
+    loadCandidates();
+};
 
 // === Candidate Actions ===
 window.editCandidate = async function(id) {

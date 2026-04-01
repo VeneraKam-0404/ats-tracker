@@ -47,14 +47,51 @@ class StatusUpdate(BaseModel):
 
 def _candidate_dict(row, cur):
     d = dict(row)
+    # Legacy ratings
     cur.execute(
-        "SELECT r.score, r.user_id, u.display_name FROM ratings r JOIN users u ON r.user_id = u.id WHERE r.candidate_id = %s",
+        "SELECT r.score, r.user_id, u.display_name, u.username FROM ratings r JOIN users u ON r.user_id = u.id WHERE r.candidate_id = %s",
         (d["id"],),
     )
     ratings = cur.fetchall()
     d["ratings"] = [dict(r) for r in ratings]
     avg = sum(r["score"] for r in ratings) / len(ratings) if ratings else 0
     d["avg_rating"] = round(avg, 1)
+
+    # Stage ratings summary: latest score per user
+    cur.execute(
+        """SELECT sr.stage, sr.score, sr.user_id, u.username
+           FROM stage_ratings sr JOIN users u ON sr.user_id = u.id
+           WHERE sr.candidate_id = %s
+           ORDER BY sr.created_at ASC""",
+        (d["id"],),
+    )
+    stage_rows = cur.fetchall()
+    # Build per-user latest scores
+    user_latest = {}  # {username: [scores in order]}
+    user_last = {}    # {username: last_score}
+    for sr in stage_rows:
+        un = sr["username"]
+        user_latest.setdefault(un, []).append(sr["score"])
+        user_last[un] = sr["score"]
+    d["user_scores"] = user_last  # {"venera": 4, "dmitry": 3}
+    # Trend per user
+    user_trend = {}
+    for un, scores in user_latest.items():
+        if len(scores) >= 2:
+            diff = scores[-1] - scores[-2]
+            user_trend[un] = "up" if diff > 0 else ("down" if diff < 0 else "stable")
+        else:
+            user_trend[un] = "stable"
+    d["user_trends"] = user_trend
+    # Divergence
+    score_vals = list(user_last.values())
+    d["score_divergence"] = (max(score_vals) - min(score_vals)) if len(score_vals) >= 2 else 0
+
+    # All stage scores for avg
+    all_scores = [sr["score"] for sr in stage_rows]
+    d["stage_avg"] = round(sum(all_scores) / len(all_scores), 1) if all_scores else 0
+
+    # Last activity
     cur.execute(
         "SELECT created_at FROM activity_log WHERE candidate_id = %s ORDER BY created_at DESC LIMIT 1",
         (d["id"],),

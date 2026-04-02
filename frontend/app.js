@@ -762,29 +762,26 @@ async function renderStarTrack(candidateId, candidate) {
         { username: 'venera', label: 'V', color: '#22c55e' },
         { username: 'dmitry', label: 'D', color: '#6366f1' },
     ];
+    const myUsername = currentUser ? currentUser.username : '';
 
-    // Group ratings by stage+user
     const byStageUser = {};
     for (const r of stageRatings) {
-        const key = `${r.stage}_${r.username}`;
-        byStageUser[key] = r; // last wins (sorted by created_at ASC)
+        byStageUser[`${r.stage}_${r.username}`] = r;
     }
 
-    // Compute trend
     const allScores = stageRatings.map(r => r.score);
     const avgScore = allScores.length ? (allScores.reduce((a,b)=>a+b,0) / allScores.length).toFixed(1) : '—';
     let trendHtml = '';
     if (allScores.length >= 2) {
         const last = allScores[allScores.length-1], prev = allScores[allScores.length-2];
-        if (last > prev) trendHtml = `<span style="color:var(--success);font-weight:700">↑</span>`;
-        else if (last < prev) trendHtml = `<span style="color:var(--danger);font-weight:700">↓</span>`;
-        else trendHtml = `<span style="color:var(--text-secondary)">→</span>`;
+        trendHtml = last > prev ? `<span style="color:var(--success);font-weight:700">↑</span>`
+            : last < prev ? `<span style="color:var(--danger);font-weight:700">↓</span>`
+            : `<span style="color:var(--text-secondary)">→</span>`;
     }
 
     const starsHtml = (score, color) => {
-        if (!score) return '<span style="color:var(--border);font-size:0.85rem">☆☆☆☆☆</span>';
         return [1,2,3,4,5].map(i =>
-            `<span style="color:${i <= score ? color : 'var(--border)'};font-size:0.85rem">${i <= score ? '★' : '☆'}</span>`
+            `<span style="color:${score && i <= score ? color : 'var(--border)'};font-size:0.85rem">${score && i <= score ? '★' : '☆'}</span>`
         ).join('');
     };
 
@@ -795,35 +792,85 @@ async function renderStarTrack(candidateId, candidate) {
         </div>
         <div class="star-track-grid">
             ${stages.map(s => {
+                const formId = `sr-form-${s.key}`;
                 return `<div class="star-track-stage">
                     <div class="star-track-label">${s.label}</div>
                     ${users.map(u => {
                         const r = byStageUser[`${s.key}_${u.username}`];
                         const score = r ? r.score : 0;
                         const comment = r && r.comment ? r.comment : '';
-                        return `<div class="star-track-row">
-                            <span style="font-size:0.7rem;font-weight:600;color:${u.color};width:1rem">${u.label}</span>
-                            <span class="star-track-stars" data-stage="${s.key}" data-cid="${candidateId}">${starsHtml(score, u.color)}</span>
-                            ${comment ? `<span title="${esc(comment)}" style="cursor:help;font-size:0.75rem;color:var(--text-secondary)">💬</span>` : ''}
+                        const isMine = u.username === myUsername;
+                        const clickable = isMine ? `style="cursor:pointer" onclick="openStageRateForm('${s.key}',${candidateId},${score},'${esc(comment).replace(/'/g, "\\'")}','${formId}')"` : '';
+                        return `<div class="star-track-user-block">
+                            <div class="star-track-row" ${clickable} title="${isMine ? 'Нажмите для редактирования' : ''}">
+                                <span style="font-size:0.7rem;font-weight:600;color:${u.color};width:1rem">${u.label}</span>
+                                <span>${starsHtml(score, u.color)}</span>
+                            </div>
+                            ${comment ? `<div style="font-size:0.7rem;color:var(--text-secondary);padding-left:1.2rem;line-height:1.3;margin-top:0.1rem">${esc(comment)}</div>` : ''}
                         </div>`;
                     }).join('')}
-                    <button class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:0.1rem 0.3rem;margin-top:0.15rem" onclick="rateStage('${s.key}',${candidateId})">Оценить</button>
+                    <div id="${formId}"></div>
+                    <button class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:0.1rem 0.3rem;margin-top:0.15rem" onclick="openStageRateForm('${s.key}',${candidateId},0,'','${formId}')">Оценить</button>
                 </div>`;
             }).join('')}
         </div>
     `;
 }
 
-window.rateStage = async function(stage, cid) {
-    const stageLabels = {resume:'Оценка резюме', test:'Оценка тестового', interview:'Оценка интервью', offer:'Итоговая оценка'};
-    const scoreStr = prompt(`${stageLabels[stage] || stage} (1-5):`);
-    if (!scoreStr) return;
-    const score = parseInt(scoreStr);
-    if (score < 1 || score > 5) { alert('Оценка от 1 до 5'); return; }
-    const comment = prompt('Короткий комментарий (необязательно):') || '';
-    await api(`/api/candidates/${cid}/ratings/stages`, { method: 'POST', body: { stage, score, comment } });
-    openCandidateDetail(cid);
-    loadCandidates();
+window.openStageRateForm = function(stage, cid, existingScore, existingComment, formContainerId) {
+    // Close any other open forms
+    document.querySelectorAll('.sr-inline-form').forEach(f => f.remove());
+
+    const container = document.getElementById(formContainerId);
+    if (!container) return;
+
+    const form = document.createElement('div');
+    form.className = 'sr-inline-form';
+    form.style.cssText = 'margin-top:0.35rem;padding:0.5rem;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border)';
+
+    let selectedScore = existingScore || 0;
+
+    const renderFormStars = () => {
+        return [1,2,3,4,5].map(i =>
+            `<span class="sr-star" data-v="${i}" style="cursor:pointer;font-size:1.1rem;color:${i <= selectedScore ? 'var(--warning)' : 'var(--border)'}">${i <= selectedScore ? '★' : '☆'}</span>`
+        ).join('');
+    };
+
+    form.innerHTML = `
+        <div class="sr-stars-row" style="display:flex;gap:0.1rem;margin-bottom:0.35rem">${renderFormStars()}</div>
+        <input type="text" class="sr-comment-input" value="${esc(existingComment)}" placeholder="Комментарий..." style="font-size:0.75rem;padding:0.3rem 0.5rem;width:100%">
+        <div style="display:flex;gap:0.3rem;margin-top:0.35rem">
+            <button class="btn btn-primary btn-sm sr-save" style="font-size:0.7rem;padding:0.15rem 0.4rem" ${selectedScore ? '' : 'disabled'}>Сохранить</button>
+            <button class="btn btn-ghost btn-sm sr-cancel" style="font-size:0.7rem;padding:0.15rem 0.4rem">Отмена</button>
+        </div>
+    `;
+    container.innerHTML = '';
+    container.appendChild(form);
+
+    // Star click via event delegation on the row
+    const starsRow = form.querySelector('.sr-stars-row');
+    starsRow.addEventListener('click', (e) => {
+        const star = e.target.closest('.sr-star');
+        if (!star) return;
+        selectedScore = parseInt(star.dataset.v);
+        starsRow.innerHTML = [1,2,3,4,5].map(i =>
+            `<span class="sr-star" data-v="${i}" style="cursor:pointer;font-size:1.1rem;color:${i <= selectedScore ? 'var(--warning)' : 'var(--border)'}">${i <= selectedScore ? '★' : '☆'}</span>`
+        ).join('');
+        form.querySelector('.sr-save').disabled = false;
+    });
+
+    form.querySelector('.sr-save').addEventListener('click', async () => {
+        const comment = form.querySelector('.sr-comment-input').value;
+        await api(`/api/candidates/${cid}/ratings/stages`, { method: 'POST', body: { stage, score: selectedScore, comment } });
+        openCandidateDetail(cid);
+        loadCandidates();
+    });
+
+    form.querySelector('.sr-cancel').addEventListener('click', () => {
+        form.remove();
+    });
+
+    form.querySelector('.sr-comment-input').focus();
 };
 
 // === Candidate Actions ===

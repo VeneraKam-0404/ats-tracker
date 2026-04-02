@@ -97,6 +97,7 @@ def init_db():
             zoom_url TEXT DEFAULT '',
             summary TEXT DEFAULT '',
             attendees TEXT DEFAULT 'all',
+            duration INTEGER DEFAULT 60,
             created_by INTEGER NOT NULL REFERENCES users(id),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             ics_sequence INTEGER DEFAULT 0
@@ -108,6 +109,7 @@ def init_db():
         ("ics_sequence", "0"),
         ("zoom_url", "''"),
         ("attendees", "'all'"),
+        ("duration", "60"),
     ]:
         cur.execute(f"""
             DO $$ BEGIN

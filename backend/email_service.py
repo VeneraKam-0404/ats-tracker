@@ -33,6 +33,7 @@ def generate_ics(
     method: str = "REQUEST",
     status: str = "CONFIRMED",
     sequence: int = 0,
+    duration_minutes: int = 60,
 ):
     """Generate an iCalendar .ics file content."""
     # Parse date and time
@@ -44,7 +45,7 @@ def generate_ics(
     except ValueError:
         dt_start = datetime.now().replace(hour=10, minute=0, second=0, microsecond=0)
 
-    dt_end = dt_start + timedelta(hours=1)
+    dt_end = dt_start + timedelta(minutes=duration_minutes)
     dt_stamp = datetime.utcnow()
 
     uid = f"ats-meeting-{meeting_id}@ats-tracker"
@@ -97,6 +98,7 @@ def send_meeting_email(
     method: str = "REQUEST",
     cancel: bool = False,
     sequence: int = 0,
+    duration_minutes: int = 60,
 ):
     """Send calendar invite email to all participants."""
     if not is_email_configured():
@@ -125,6 +127,7 @@ def send_meeting_email(
         method=ics_method,
         status=ics_status,
         sequence=sequence,
+        duration_minutes=duration_minutes,
     )
 
     subject_prefix = "Отмена: " if cancel else ("Обновление: " if method == "REQUEST" and sequence > 0 else "")

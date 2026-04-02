@@ -650,7 +650,7 @@ async function openCandidateDetail(id) {
                 ${meetings.map(m => `
                     <div class="item-card">
                         <div class="item-header">
-                            <span class="item-title">${formatDate(m.meeting_date)}${m.meeting_time ? ' ' + esc(m.meeting_time) : ''} · ${esc(m.format)}</span>
+                            <span class="item-title">${formatDate(m.meeting_date)}${m.meeting_time ? ' ' + esc(m.meeting_time) : ''} · ${esc(m.format)}${m.duration ? ' · ' + m.duration + ' мин' : ''}</span>
                             <div style="display:flex;gap:0.25rem">
                                 <button class="btn btn-ghost btn-sm" onclick="editMeeting(${id},${m.id})">&#9998;</button>
                                 <button class="btn btn-ghost btn-sm" onclick="deleteMeeting(${id},${m.id})">✕</button>
@@ -669,9 +669,15 @@ async function openCandidateDetail(id) {
                     <summary>Добавить встречу</summary>
                     <div class="add-form">
                         <input type="hidden" id="edit-meeting-id">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem">
                             <div><label>Дата *</label><input type="date" id="new-meeting-date"></div>
                             <div><label>Время</label><input type="time" id="new-meeting-time" value="10:00"></div>
+                            <div><label>Длительность</label><select id="new-meeting-duration" class="select">
+                                <option value="30">30 мин</option>
+                                <option value="60" selected>60 мин</option>
+                                <option value="90">90 мин</option>
+                                <option value="120">2 часа</option>
+                            </select></div>
                         </div>
                         <label>Формат</label>
                         <select id="new-meeting-format" class="select">
@@ -893,6 +899,7 @@ window.saveMeeting = async function(cid) {
         zoom_url: document.getElementById('new-meeting-zoom').value,
         recording_url: document.getElementById('new-meeting-recording').value,
         summary: document.getElementById('new-meeting-summary').value,
+        duration: parseInt(document.getElementById('new-meeting-duration').value) || 60,
     };
     if (!data.meeting_date) { alert('Укажите дату'); return; }
     if (editId) {
@@ -909,14 +916,19 @@ window.editMeeting = async function(cid, mid) {
     if (!m) return;
     document.getElementById('edit-meeting-id').value = m.id;
     document.getElementById('new-meeting-date').value = m.meeting_date || '';
-    document.getElementById('new-meeting-time').value = m.meeting_time || '';
+    document.getElementById('new-meeting-time').value = m.meeting_time || '10:00';
     document.getElementById('new-meeting-format').value = m.format || 'zoom';
     document.getElementById('new-meeting-attendees').value = m.attendees || 'all';
     document.getElementById('new-meeting-zoom').value = m.zoom_url || '';
     document.getElementById('new-meeting-recording').value = m.recording_url || '';
     document.getElementById('new-meeting-summary').value = m.summary || '';
+    const durSel = document.getElementById('new-meeting-duration');
+    if (durSel) durSel.value = String(m.duration || 60);
     const section = document.getElementById('meeting-form-section');
-    if (section) section.open = true;
+    if (section) {
+        section.open = true;
+        section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
 };
 
 window.cancelEditMeeting = function() {
@@ -928,6 +940,10 @@ window.cancelEditMeeting = function() {
     document.getElementById('new-meeting-zoom').value = '';
     document.getElementById('new-meeting-recording').value = '';
     document.getElementById('new-meeting-summary').value = '';
+    const durSel = document.getElementById('new-meeting-duration');
+    if (durSel) durSel.value = '60';
+    const section = document.getElementById('meeting-form-section');
+    if (section) section.open = false;
 };
 
 window.deleteMeeting = async function(cid, mid) {

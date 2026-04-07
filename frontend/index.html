@@ -124,8 +124,15 @@
                         <input type="hidden" id="cf-id">
                         <label>ФИО *</label>
                         <input type="text" id="cf-name" required>
-                        <label>Позиция</label>
-                        <input type="text" id="cf-position" placeholder="ML Engineer, Frontend Developer...">
+                        <label>Позиции</label>
+                        <div id="cf-position-tags" class="tag-selector">
+                            <div class="tag-selected" id="cf-position-selected"></div>
+                            <div class="tag-input-wrap">
+                                <input type="text" id="cf-position-input" placeholder="Добавить позицию..." autocomplete="off">
+                                <div class="tag-dropdown" id="cf-position-dropdown"></div>
+                            </div>
+                        </div>
+                        <input type="hidden" id="cf-position">
                         <label>Email</label>
                         <input type="email" id="cf-email">
                         <label>Телефон</label>

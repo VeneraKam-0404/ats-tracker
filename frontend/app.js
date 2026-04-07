@@ -5,6 +5,36 @@ let candidates = [];
 let currentCandidateId = null;
 let calendarWeekStart = getMonday(new Date());
 
+const DEFAULT_POSITIONS = [
+    'CTO / AI-ML Engineer (техлид)',
+    'Product Owner, EdTech',
+    'Backend Developer',
+    'Frontend Developer',
+    'Product Designer',
+    'Data Scientist',
+    'DevOps Engineer',
+    'QA Engineer',
+    'Project Manager',
+];
+
+const POS_COLORS = ['#6366f1','#ec4899','#f59e0b','#22c55e','#06b6d4','#8b5cf6','#ef4444','#14b8a6','#f97316'];
+function posColor(pos) {
+    let h = 0;
+    for (let i = 0; i < pos.length; i++) h = ((h << 5) - h + pos.charCodeAt(i)) | 0;
+    return POS_COLORS[Math.abs(h) % POS_COLORS.length];
+}
+
+function posTags(posStr) {
+    if (!posStr) return '<span style="color:var(--text-secondary)">—</span>';
+    return posStr.split(',').map(p => p.trim()).filter(Boolean).map(p =>
+        `<span class="pos-tag" style="--tag-color:${posColor(p)}">${esc(p)}</span>`
+    ).join(' ');
+}
+
+function posArray(posStr) {
+    return (posStr || '').split(',').map(p => p.trim()).filter(Boolean);
+}
+
 const STATUSES = ['Новый', 'Резюме рассмотрено', 'Запрос информации', 'Тестовое задание', 'Интервью', 'Оффер', 'Принят', 'Отказ'];
 const STATUS_CLASSES = {
     'Новый': 'status-new', 'Резюме рассмотрено': 'status-reviewed',
@@ -212,7 +242,7 @@ function renderKanban() {
                         <button class="btn btn-ghost btn-sm card-menu-btn" style="padding:0.1rem 0.3rem;font-size:0.9rem;line-height:1" data-cid="${c.id}">⋮</button>
                     </div>
                 </div>
-                <div class="card-position">${esc(c.position || '—')}</div>
+                <div class="card-position">${posTags(c.position)}</div>
                 <div style="font-size:0.7rem;margin-top:0.35rem;line-height:1.4">
                     ${us.venera ? `<div>V: ${miniStars(us.venera)} <span style="color:${trendColor(ut.venera)};font-weight:600">${trendIcon(ut.venera)}</span></div>` : ''}
                     ${us.dmitry ? `<div>D: ${miniStars(us.dmitry)} <span style="color:${trendColor(ut.dmitry)};font-weight:600">${trendIcon(ut.dmitry)}</span></div>` : ''}
@@ -425,9 +455,9 @@ function renderTable() {
     const posFilter = document.getElementById('filter-position').value;
 
     let filtered = candidates.filter(c => {
-        if (search && !c.full_name.toLowerCase().includes(search) && !c.position.toLowerCase().includes(search) && !(c.email||'').toLowerCase().includes(search)) return false;
+        if (search && !c.full_name.toLowerCase().includes(search) && !(c.position||'').toLowerCase().includes(search) && !(c.email||'').toLowerCase().includes(search)) return false;
         if (statusFilter && c.status !== statusFilter) return false;
-        if (posFilter && c.position !== posFilter) return false;
+        if (posFilter && !posArray(c.position).includes(posFilter)) return false;
         return true;
     });
 
@@ -439,7 +469,7 @@ function renderTable() {
         const miniS = s => s ? '<span style="color:var(--warning)">' + '★'.repeat(s) + '</span>' + '<span style="color:var(--border)">' + '☆'.repeat(5-s) + '</span>' : '—';
         return `<tr data-id="${c.id}" ${delta > 2 ? 'style="background:rgba(245,158,11,0.08)"' : ''}>
             <td><strong>${esc(c.full_name)}</strong></td>
-            <td>${esc(c.position || '—')}</td>
+            <td>${posTags(c.position)}</td>
             <td><span class="status-badge ${STATUS_CLASSES[c.status]}">${c.status}</span></td>
             <td style="font-size:0.8rem">${miniS(sv)}</td>
             <td style="font-size:0.8rem">${miniS(sd)}</td>
@@ -460,7 +490,7 @@ document.getElementById('filter-position').addEventListener('change', renderTabl
 
 function updatePositionFilter() {
     const sel = document.getElementById('filter-position');
-    const positions = [...new Set(candidates.map(c => c.position).filter(Boolean))];
+    const positions = [...new Set(candidates.flatMap(c => posArray(c.position)))];
     const current = sel.value;
     sel.innerHTML = '<option value="">Все позиции</option>' + positions.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
     sel.value = current;
@@ -486,12 +516,74 @@ document.getElementById('add-candidate-btn').addEventListener('click', () => {
     document.getElementById('edit-modal-title').textContent = 'Новый кандидат';
     document.getElementById('candidate-form').reset();
     document.getElementById('cf-id').value = '';
+    setPositionTags([]);
     editModal.classList.add('active');
 });
 
 editModal.querySelectorAll('.modal-close, .modal-cancel').forEach(el => {
     el.addEventListener('click', () => editModal.classList.remove('active'));
 });
+
+// === Position Tag Selector ===
+let selectedPositions = [];
+
+function setPositionTags(tags) {
+    selectedPositions = [...tags];
+    renderPositionTags();
+}
+
+function renderPositionTags() {
+    const container = document.getElementById('cf-position-selected');
+    const hidden = document.getElementById('cf-position');
+    container.innerHTML = selectedPositions.map((p, i) =>
+        `<span class="pos-tag" style="--tag-color:${posColor(p)}">${esc(p)} <span class="pos-tag-x" data-i="${i}">&times;</span></span>`
+    ).join('');
+    hidden.value = selectedPositions.join(', ');
+    container.querySelectorAll('.pos-tag-x').forEach(x => {
+        x.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectedPositions.splice(parseInt(x.dataset.i), 1);
+            renderPositionTags();
+        });
+    });
+}
+
+(function initPositionInput() {
+    const input = document.getElementById('cf-position-input');
+    const dropdown = document.getElementById('cf-position-dropdown');
+
+    function showDropdown(filter) {
+        const allPos = [...new Set([...DEFAULT_POSITIONS, ...candidates.flatMap(c => posArray(c.position))])];
+        const filtered = allPos.filter(p =>
+            !selectedPositions.includes(p) && p.toLowerCase().includes((filter || '').toLowerCase())
+        );
+        if (filtered.length === 0 && filter) {
+            dropdown.innerHTML = `<div class="tag-dd-item tag-dd-new" data-val="${esc(filter)}">+ "${esc(filter)}"</div>`;
+        } else {
+            dropdown.innerHTML = filtered.slice(0, 8).map(p =>
+                `<div class="tag-dd-item" data-val="${esc(p)}">${esc(p)}</div>`
+            ).join('');
+            if (filter && !allPos.some(p => p.toLowerCase() === filter.toLowerCase())) {
+                dropdown.innerHTML += `<div class="tag-dd-item tag-dd-new" data-val="${esc(filter)}">+ "${esc(filter)}"</div>`;
+            }
+        }
+        dropdown.style.display = 'block';
+        dropdown.querySelectorAll('.tag-dd-item').forEach(item => {
+            item.addEventListener('click', () => {
+                selectedPositions.push(item.dataset.val);
+                renderPositionTags();
+                input.value = '';
+                dropdown.style.display = 'none';
+            });
+        });
+    }
+
+    input.addEventListener('focus', () => showDropdown(input.value));
+    input.addEventListener('input', () => showDropdown(input.value));
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#cf-position-tags')) dropdown.style.display = 'none';
+    });
+})();
 
 document.getElementById('candidate-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -558,7 +650,7 @@ async function openCandidateDetail(id) {
             </div>
 
             <div class="candidate-profile">
-                ${profileField('Позиция', candidate.position)}
+                ${profileField('Позиция', posTags(candidate.position), true)}
                 ${profileField('Email', candidate.email ? `<a href="mailto:${esc(candidate.email)}">${esc(candidate.email)}</a>` : '—', true)}
                 ${profileField('Телефон', candidate.phone || '—')}
                 ${profileField('Telegram', candidate.telegram || '—')}
@@ -879,7 +971,7 @@ window.editCandidate = async function(id) {
     document.getElementById('edit-modal-title').textContent = 'Редактировать кандидата';
     document.getElementById('cf-id').value = c.id;
     document.getElementById('cf-name').value = c.full_name;
-    document.getElementById('cf-position').value = c.position;
+    setPositionTags(posArray(c.position));
     document.getElementById('cf-email').value = c.email;
     document.getElementById('cf-phone').value = c.phone;
     document.getElementById('cf-telegram').value = c.telegram;
